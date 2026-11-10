@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>ระบบตรวจสอบและแปลงเอกสารภาษี — V16</title>
+<title>ระบบตรวจสอบและแปลงเอกสารภาษี — V17</title>
 <style>
 :root{
   --bg:#0f1318; --panel:#171c23; --panel2:#1e252e; --line:#2b3440;
@@ -511,14 +511,7 @@ function renderDashboard(){
         <button class="btn" style="width:auto" onclick="go('${k}')">ดูรายละเอียด →</button>
       </div></div>`;
   }).join("");
-  const np = photoItems("photo").length;
-  $view.innerHTML = `<h1>Dashboard</h1><p class="sub">ภาพรวมแยกตามพื้นที่ทำงาน</p>${cards}
-    <div class="card" style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
-      <div><h2>รูปถ่าย</h2><p class="hint" style="margin:2px 0 0">${np
-        ? `กรอกยอดแล้ว ${np} รายการ จาก ${FILES.photo.length} รูป · รอกำหนดการใช้งาน`
-        : (FILES.photo.length ? `อัปโหลดแล้ว ${FILES.photo.length} รูป ยังไม่ได้กรอกยอด` : "ยังไม่มีรูปถ่าย")}</p></div>
-      <button class="btn" style="width:auto" onclick="go('photo')">ไปที่อัปโหลดรูปถ่าย →</button>
-    </div>`;
+  $view.innerHTML = `<h1>Dashboard</h1><p class="sub">ภาพรวมแยกตามพื้นที่ทำงาน</p>${cards}`;
 }
 
 /* ===== พื้นที่ทำงาน ===== */
