@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>ระบบตรวจสอบและแปลงเอกสารภาษี — V29</title>
+<title>ระบบตรวจสอบและแปลงเอกสารภาษี — V30</title>
 <style>
 :root{
   --bg:#0f1318; --panel:#171c23; --panel2:#1e252e; --line:#2b3440;
@@ -524,8 +524,11 @@ function problems(k){
 
 /* ===== นำทาง ===== */
 let current = "dashboard";
-const rerender = k => k==="photo" ? renderPhoto() : k==="settings" ? renderSettings() : renderWorkspace(k);
+const rerender = k => k==="photo" ? renderPhoto() : k==="settings" ? renderSettings() : viewerMode() ? renderViewWorkspace(k) : renderWorkspace(k);
+// โหมดดูอย่างเดียว: เครื่องที่เปิดจากปุ่ม "เปิดดูบนเว็บ" ในการ์ด LINE (มีรหัสดูข้อมูล แต่ไม่มีลิงก์ส่ง)
+const viewerMode = () => !relay() && !!(viewCfg() || VIEW_ONCE);
 function go(view){
+  if (viewerMode() && !(view==="dashboard" || (WS[view] && !WS[view].hidden))) view = "dashboard";
   EDIT = null; current = view;
   document.querySelectorAll(".nav-btn").forEach(b=>b.classList.toggle("active", b.dataset.view===view));
   document.getElementById("sidebar").classList.remove("open");
@@ -575,7 +578,40 @@ function trendCard(k, recs){
       <span>${bs(r.pay)}</span><i style="height:${Math.max(2, Math.round(r.pay/max*100))}px"></i>${esc(shortLabel(r.period))}</div>`).join("")}</div></div>`;
 }
 const shortLabel = key => { const [y,m] = key.split("-").map(Number); return ["ม.ค.","ก.พ.","มี.ค.","เม.ย.","พ.ค.","มิ.ย.","ก.ค.","ส.ค.","ก.ย.","ต.ค.","พ.ย.","ธ.ค."][m-1] + " " + String(y).slice(2); };
-function dashSel(k, p){ SEL[k] = p; renderDashboard(); }
+function dashSel(k, p){ SEL[k] = p; current===k ? renderViewWorkspace(k) : renderDashboard(); }
+function monthPicker(k, recs, rec){
+  return recs.length > 1
+    ? `<select class="month-sel" onchange="dashSel('${k}', this.value)">${recs.map(r=>`<option value="${r.period}" ${r.period===rec.period ? "selected" : ""}>ภาษีเดือน ${esc(r.label)}</option>`).join("")}</select>`
+    : `<span class="chip info">ภาษีเดือน ${esc(rec.label)}</span>`;
+}
+// หน้า Chan Leasing ในโหมดดูอย่างเดียว: แสดงยอดของเดือนที่เลือกจาก Google Sheet ไม่มีอัปโหลด/ส่ง LINE
+function renderViewWorkspace(k){
+  const recs = records(k), rec = selRec(k);
+  if (rec) SEL[k] = rec.period;
+  const load = LOAD.state==="loading" ? `<p class="hint">${esc(LOAD.msg)}</p>` : LOAD.state==="err" ? `<p class="hint" style="color:var(--warn)">${esc(LOAD.msg)}</p>` : "";
+  if (!rec){ $view.innerHTML = `<div class="dash-head"><h1>${WS[k].name}</h1></div>${load}<div class="card dash-empty-state"><b>ยังไม่มีข้อมูล</b></div>`; return; }
+  const box = (title, a, sub) => `<div class="card">
+      <div class="card-head"><div><h2>${title}</h2><p>${sub}</p></div></div>
+      <div class="kpis" style="margin-bottom:0">
+        <div class="kpi"><span>มูลค่าสินค้าหรือบริการ</span><b>${bs(a[0])}</b></div>
+        <div class="kpi vat"><span>ภาษีมูลค่าเพิ่ม</span><b>${bs(a[1])}</b></div>
+        <div class="kpi"><span>รวม</span><b>${bs(a[2])}</b></div>
+      </div></div>`;
+  $view.innerHTML = `<div class="dash-head"><h1>${WS[k].name}</h1><div class="dash-head-r">${monthPicker(k, recs, rec)}</div></div>${load}
+    <p class="sub">ดูอย่างเดียว · ข้อมูลจาก Google Sheet${rec.savedAt ? " บันทึกเมื่อ " + esc(rec.savedAt) : ""}</p>
+    <div class="card">
+      <div class="card-head"><h2>สรุปภาษี</h2></div>
+      <div class="kpis" style="margin-bottom:0">
+        <div class="kpi"><span>ภาษีซื้อ</span><b>${bs(rec.buy[1])}</b></div>
+        <div class="kpi"><span>ภาษีขาย</span><b>${bs(rec.sale[1])}</b></div>
+        <div class="kpi result"><span>ภาษีที่ต้องจ่าย ภ.พ.30</span><b>${bs(rec.pay)}</b><small>${rec.excess ? "ภาษีซื้อเกิน " + bs(rec.excess) : "ภาษีขาย − ภาษีซื้อ"}</small></div>
+      </div>
+    </div>
+    ${box("ภาษีซื้อ", rec.buy, `รายงานภาษีซื้อ · ${num(rec.buyCount)} รายการ`)}
+    ${box("ภาษีขาย", rec.sale, `รายงานภาษีขาย · ${num(rec.saleCount)} ใบ`)}
+    <div class="card"><h2 style="margin-bottom:10px">ผลการตรวจ</h2>
+      <ul class="check-list">${rec.checks.map(c=>`<li class="${c.ok?'ok':'bad'}">${c.ok?'✓':'⚠'} ${esc(c.label)}</li>`).join("") || '<li>—</li>'}</ul></div>`;
+}
 function dashSection(k){
   const recs = records(k), rec = selRec(k);
   if (rec) SEL[k] = rec.period;
@@ -584,17 +620,15 @@ function dashSection(k){
   if (!rec) return `<div class="dash-head"><h1>Dashboard · ${WS[k].name}</h1></div>${load}${partial}
     <div class="card dash-empty-state">
       <b>ยังไม่มีข้อมูล</b>
-      <p class="hint">อัปโหลดรายงานภาษีซื้อและรายงานภาษีขายที่เมนู ${WS[k].name} แล้วยอดสรุปจะแสดงที่นี่</p>
-      <button class="btn primary" style="width:auto" onclick="go('${k}')">ไปอัปโหลดไฟล์ที่ ${WS[k].name} →</button>
+      ${viewerMode() ? "" : `<p class="hint">อัปโหลดรายงานภาษีซื้อและรายงานภาษีขายที่เมนู ${WS[k].name} แล้วยอดสรุปจะแสดงที่นี่</p>`}
+      ${viewerMode() ? "" : `<button class="btn primary" style="width:auto" onclick="go('${k}')">ไปอัปโหลดไฟล์ที่ ${WS[k].name} →</button>`}
     </div>`;
   const prev = recs.find(r=>r.period===prevKey(rec.period)), pl = prev ? shortLabel(prev.period) : "";
   const sv = SAVE_STATUS[k] && rec.local && !rec.savedAt ? SAVE_STATUS[k] : null;
   const saved = rec.savedAt ? `<span class="saved">☁ บันทึกลง Google Sheet แล้ว ${esc(rec.savedAt)}</span>`
     : sv ? `<span class="saved" style="color:${sv.kind==="err" ? "var(--warn)" : "var(--muted)"}">${esc(sv.msg)}</span>`
     : relay() ? "" : `<span class="saved" style="color:var(--muted)">ยังไม่ได้บันทึกลง Google Sheet</span>`;
-  const picker = recs.length > 1
-    ? `<select class="month-sel" onchange="dashSel('${k}', this.value)">${recs.map(r=>`<option value="${r.period}" ${r.period===rec.period ? "selected" : ""}>ภาษีเดือน ${esc(r.label)}</option>`).join("")}</select>`
-    : `<span class="chip info">ภาษีเดือน ${esc(rec.label)}</span>`;
+  const picker = monthPicker(k, recs, rec);
   const row = (label, a) => `<tr><td>${label}</td><td class="num">${bs(a[0])}</td><td class="num">${bs(a[1])}</td><td class="num">${bs(a[2])}</td></tr>`;
   return `<div class="dash-head"><h1>Dashboard · ${WS[k].name}</h1><div class="dash-head-r">${saved}${picker}</div></div>${load}${partial}
     <div class="kpis">
@@ -605,7 +639,7 @@ function dashSection(k){
     </div>
     ${trendCard(k, recs)}
     <div class="card">
-      <div class="card-head"><h2>รายละเอียด</h2>${rec.local ? `<button class="btn sm" style="width:auto" onclick="go('${k}')">ดูรายละเอียดทั้งหมด →</button>` : ""}</div>
+      <div class="card-head"><h2>รายละเอียด</h2>${rec.local || viewerMode() ? `<button class="btn sm" style="width:auto" onclick="go('${k}')">ดูรายละเอียดทั้งหมด →</button>` : ""}</div>
       <div class="table-wrap"><table class="sum-table">
         <thead><tr><th></th><th class="num">มูลค่าสินค้าหรือบริการ</th><th class="num">ภาษีมูลค่าเพิ่ม</th><th class="num">รวม</th></tr></thead>
         <tbody>${row("ภาษีซื้อ", rec.buy)}${row("ภาษีขาย", rec.sale)}</tbody>
@@ -1092,6 +1126,7 @@ async function loadStore(){
 }
 function refresh(){
   if (current==="dashboard") renderDashboard();
+  else if (WS[current] && viewerMode()) renderViewWorkspace(current);
   else if (current==="settings"){ const el = document.getElementById("sheetInfo"); if (el) el.innerHTML = sheetInfo(); }
 }
 function sheetInfo(){
@@ -1307,7 +1342,10 @@ function photoEntries(k){
 
 
 
-document.querySelectorAll(".nav-btn").forEach(b=>{ b.onclick = ()=>go(b.dataset.view); if (WS[b.dataset.view] && WS[b.dataset.view].hidden) b.hidden = true; });
+document.querySelectorAll(".nav-btn").forEach(b=>{ b.onclick = ()=>go(b.dataset.view);
+  const v = b.dataset.view;
+  if ((WS[v] && WS[v].hidden) || (viewerMode() && (v==="photo" || v==="settings"))) b.hidden = true; });
+if (viewerMode()){ const seps = document.querySelectorAll(".sidebar .nav-sep"); if (seps.length) seps[seps.length-1].style.display = "none"; }
 document.getElementById("menuToggle").onclick=()=>document.getElementById("sidebar").classList.toggle("open");
 go("dashboard");
 loadStore();
