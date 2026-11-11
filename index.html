@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>ระบบตรวจสอบและแปลงเอกสารภาษี — V24</title>
+<title>ระบบตรวจสอบและแปลงเอกสารภาษี — V25</title>
 <style>
 :root{
   --bg:#0f1318; --panel:#171c23; --panel2:#1e252e; --line:#2b3440;
@@ -143,6 +143,7 @@ details .frow{margin:12px 0 4px}
 .ws-card .send-confirm{margin-top:12px}
 .dash-btns{display:flex;gap:8px;flex-wrap:wrap}
 .card-title{font-size:17px;font-weight:700;margin:0 0 6px}
+.nav-settings{margin-top:auto}
 .line-check{display:flex;align-items:center;gap:8px;font-size:14px;margin-bottom:10px;cursor:pointer}
 .line-check input{width:18px;height:18px;accent-color:var(--accent)}
 .line-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:10px}
@@ -178,6 +179,9 @@ details .frow{margin:12px 0 4px}
     <button class="nav-btn" data-view="photo">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>
       อัปโหลดรูปถ่าย</button>
+    <button class="nav-btn nav-settings" data-view="settings">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+      ตั้งค่า</button>
   </aside>
 
   <main>
@@ -492,7 +496,7 @@ function problems(k){
 
 /* ===== นำทาง ===== */
 let current = "dashboard";
-const rerender = k => k==="photo" ? renderPhoto() : renderWorkspace(k);
+const rerender = k => k==="photo" ? renderPhoto() : k==="settings" ? renderSettings() : renderWorkspace(k);
 function go(view){
   EDIT = null; current = view;
   document.querySelectorAll(".nav-btn").forEach(b=>b.classList.toggle("active", b.dataset.view===view));
@@ -538,8 +542,13 @@ function renderDashboard(){
       </div>
       <div class="hint" id="dstat-${k}" style="${lineStyle(k)}">${esc((LINE_STATUS[k]||{}).msg||"")}</div></div>`;
   }).join("");
+  $view.innerHTML = `<h1>Dashboard</h1><p class="sub">ภาพรวมแยกตามพื้นที่ทำงาน</p>${cards}`;
+}
+
+/* ===== ตั้งค่า ===== */
+function renderSettings(){
   const st = loadLineNotifySettings();
-  $view.innerHTML = `<h1>Dashboard</h1><p class="sub">ภาพรวมแยกตามพื้นที่ทำงาน</p>${cards}
+  $view.innerHTML = `<h1>ตั้งค่า</h1><p class="sub">การตั้งค่าเก็บไว้ในเบราว์เซอร์เครื่องนี้เท่านั้น</p>
     <div class="card">
       <p class="card-title">🔔 แจ้งเตือน LINE</p>
       <p class="hint" style="margin:0 0 12px">ทุกครั้งที่อัปโหลดรายงานภาษีซื้อและภาษีขายของพื้นที่ใดครบ ระบบจะส่งการ์ดสรุปภาษีเข้ากลุ่ม LINE (ถ้าเชิญบอทเข้ากลุ่มไว้) หรือส่งหาทุกคนที่แอดบอทเป็นเพื่อน — วางลิงก์ Apps Script ที่ได้จากขั้นตอนตั้งค่า (ลงท้ายด้วย <span class="mono">?key=...</span>) แล้วกดบันทึก ค่านี้เก็บไว้ในเครื่องนี้เท่านั้น</p>
@@ -847,7 +856,6 @@ function lineSave(){
   const enabled = document.getElementById("lineNotifyEnabled").checked;
   if (enabled && !isValidLineRelayUrl(url)) return setLineStatus("ลิงก์ไม่ถูกต้อง — ต้องขึ้นต้นด้วย https://script.google.com/ และมี ?key=... ต่อท้าย", "err");
   if (!saveLineNotifySettings({enabled, url})) return setLineStatus("บันทึกไม่ได้ (เบราว์เซอร์บล็อกการเก็บข้อมูล)", "err");
-  renderDashboard();   // แสดง/ซ่อนปุ่ม "ส่งเข้า LINE" ตามการตั้งค่า
   setLineStatus(enabled ? "บันทึกแล้ว — จะแจ้งเตือนทุกครั้งที่อัปโหลดภาษีซื้อและภาษีขายครบ" : "บันทึกแล้ว (ปิดแจ้งเตือนอยู่)", "ok");
 }
 async function lineTest(){
