@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>ระบบตรวจสอบและแปลงเอกสารภาษี — V31</title>
+<title>ระบบตรวจสอบและแปลงเอกสารภาษี — V32</title>
 <style>
 :root{
   --bg:#0f1318; --panel:#171c23; --panel2:#1e252e; --line:#2b3440;
@@ -207,6 +207,57 @@ a{color:#9ccbff}
 .user-table select.fin{width:auto;padding:4px 8px}
 .user-act{white-space:nowrap;text-align:right}
 .btn.danger{color:var(--warn);border-color:var(--warn)}
+/* ===== ธีมสว่างโทนกรมท่า (เหมือนการ์ด LINE) ===== */
+:root{
+  --bg:#E4EAF1; --panel:#F8FAFC; --panel2:#EEF2F6; --line:#D2DBE5;
+  --text:#14202E; --muted:#5D6B7A; --accent:#1A6FD1; --accent-weak:#DCE8F7;
+  --warn:#9A6700; --warn-weak:#FFF1D1; --ok:#1E8E5A; --navy:#0F2A47;
+}
+.card,.login-card{box-shadow:0 1px 3px rgba(15,42,71,.08)}
+/* Sidebar สีกรมท่า */
+.sidebar{background:var(--navy);border-right:0;color:#fff}
+.brand{color:#fff;border-bottom-color:rgba(255,255,255,.15)}
+.nav-btn{color:#B8C7D9}
+.nav-btn:hover{background:rgba(255,255,255,.08);color:#fff}
+.nav-btn.active{background:rgba(156,203,255,.18);color:#fff}
+.nav-sep{background:rgba(255,255,255,.15)}
+.user-box{border-top-color:rgba(255,255,255,.15)}
+.user-box .user-nm{color:#fff}.user-box .user-rl{color:#9CCBFF}
+.sidebar .btn{background:rgba(255,255,255,.08);border-color:rgba(255,255,255,.2);color:#fff}
+/* ปุ่ม / ลิงก์ / ป้าย */
+.btn{background:#fff;color:var(--text)}
+.btn.primary{background:var(--navy);border-color:var(--navy);color:#fff}
+.btn.primary:hover{background:#18406B;border-color:#18406B}
+.btn.danger{background:#fff}
+a{color:var(--accent)}
+.chip.info{background:var(--accent-weak);color:#174E92}
+.chip.ok{background:#E3F5EB;color:var(--ok)}
+.fin,.month-sel{background:#fff}
+.month-sel{border-color:var(--navy);color:var(--navy)}
+/* ตัวเลข: ภาษีมูลค่าเพิ่มสีน้ำเงินแบบการ์ด */
+.kpi.vat b,.kpi.result b,.sum-table tr.pay td.num{color:var(--accent)}
+.kpi.big{background:#fff}
+.kpi.big b{color:var(--text)}
+/* กล่องผลลัพธ์ ภ.พ.30 = หัวการ์ดกรมท่า */
+.kpi.big.result{background:var(--navy);border-color:var(--navy)}
+.kpi.big.result span{color:#9CCBFF}.kpi.big.result b{color:#fff}.kpi.big.result small{color:#C9D6E5}
+.kpi.big.result .delta{color:#fff}
+tr.net td,.sum-table tr.pay td,.sum-table tr.excess td{background:#EAF1FA}
+.drop:hover,.drop.over{background:#EAF1FA}
+.files li{background:#fff;border:1px solid var(--line)}
+.files .ext{background:var(--accent-weak);color:#174E92}
+.x:hover{color:#C0392B;background:#FBE9E7}
+.err{color:#C0392B}
+/* ผลตรวจ: กล่องเขียว/เหลืองแบบการ์ด */
+.check-list li{padding:8px 12px;border-radius:8px}
+.check-list li.ok{background:#E8F7EF}.check-list li.bad{background:#FFF4DB}
+.trend .bar i{background:#A9C4E4}.trend .bar.cur i{background:var(--navy)}
+.send-confirm{background:#fff}
+/* หน้าเข้าสู่ระบบ */
+.login-gate{background:linear-gradient(180deg,var(--navy) 0,var(--navy) 42%,var(--bg) 42%)}
+.login-logo{color:var(--navy)}
+@media (max-width:760px){.sidebar.open{box-shadow:0 0 0 100vmax rgba(15,42,71,.45)}}
+.sum-table tbody td:nth-child(3){color:var(--accent);font-weight:700}
 </style>
 </head>
 <body>
