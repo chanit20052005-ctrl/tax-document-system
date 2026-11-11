@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>ระบบตรวจสอบและแปลงเอกสารภาษี — V23</title>
+<title>ระบบตรวจสอบและแปลงเอกสารภาษี — V24</title>
 <style>
 :root{
   --bg:#0f1318; --panel:#171c23; --panel2:#1e252e; --line:#2b3440;
@@ -528,22 +528,22 @@ function renderDashboard(){
           : n ? `<span style="color:var(--warn)">พบ ${n} รายการที่ต้องตรวจ</span>`
           : (W[k].buy && W[k].sale ? '<span style="color:var(--ok)">✓ ตรวจแล้ว ยอดตรงกับรายงาน</span>' : 'ยังอัปโหลดไม่ครบทั้งภาษีซื้อและภาษีขาย')}</div>
         <div class="dash-btns">
-          ${lineOn() && cardData(k) ? `<button class="btn primary" style="width:auto" id="dsend-${k}" onclick="dashAsk('${k}')">ส่งเข้า LINE</button>` : ""}
+          ${lineOn() && cardData(k) ? `<button class="btn primary" style="width:auto" id="dsend-${k}" onclick="dashAsk('${k}')">ส่งเข้า LINE อีกครั้ง</button>` : ""}
           <button class="btn" style="width:auto" onclick="go('${k}')">ดูรายละเอียด →</button>
         </div>
       </div>
       <div class="send-confirm" id="dconf-${k}" hidden>
-        <span>ส่งการ์ดสรุปภาษี ${esc(WS[k].name)} ภาษีเดือน ${esc(p.label)} เข้า LINE?</span>
+        <span>ส่งการ์ดสรุปภาษี ${esc(WS[k].name)} อีกครั้ง ภาษีเดือน ${esc(p.label)} เข้า LINE?</span>
         <div><button class="btn primary sm" onclick="dashSendNow('${k}')">ยืนยันส่ง</button> <button class="btn sm" onclick="dashCancel('${k}')">ยกเลิก</button></div>
       </div>
-      <div class="hint" id="dstat-${k}"></div></div>`;
+      <div class="hint" id="dstat-${k}" style="${lineStyle(k)}">${esc((LINE_STATUS[k]||{}).msg||"")}</div></div>`;
   }).join("");
   const st = loadLineNotifySettings();
   $view.innerHTML = `<h1>Dashboard</h1><p class="sub">ภาพรวมแยกตามพื้นที่ทำงาน</p>${cards}
     <div class="card">
       <p class="card-title">🔔 แจ้งเตือน LINE</p>
-      <p class="hint" style="margin:0 0 12px">กดปุ่ม “ส่งเข้า LINE” ที่การ์ดของแต่ละพื้นที่ ระบบจะส่งการ์ดสรุปภาษีเข้ากลุ่ม LINE (ถ้าเชิญบอทเข้ากลุ่มไว้) หรือส่งหาทุกคนที่แอดบอทเป็นเพื่อน — วางลิงก์ Apps Script ที่ได้จากขั้นตอนตั้งค่า (ลงท้ายด้วย <span class="mono">?key=...</span>) แล้วกดบันทึก ค่านี้เก็บไว้ในเครื่องนี้เท่านั้น</p>
-      <label class="line-check"><input type="checkbox" id="lineNotifyEnabled" ${st.enabled ? "checked" : ""}> เปิดแจ้งเตือน LINE (แสดงปุ่ม “ส่งเข้า LINE”)</label>
+      <p class="hint" style="margin:0 0 12px">ทุกครั้งที่อัปโหลดรายงานภาษีซื้อและภาษีขายของพื้นที่ใดครบ ระบบจะส่งการ์ดสรุปภาษีเข้ากลุ่ม LINE (ถ้าเชิญบอทเข้ากลุ่มไว้) หรือส่งหาทุกคนที่แอดบอทเป็นเพื่อน — วางลิงก์ Apps Script ที่ได้จากขั้นตอนตั้งค่า (ลงท้ายด้วย <span class="mono">?key=...</span>) แล้วกดบันทึก ค่านี้เก็บไว้ในเครื่องนี้เท่านั้น</p>
+      <label class="line-check"><input type="checkbox" id="lineNotifyEnabled" ${st.enabled ? "checked" : ""}> เปิดแจ้งเตือน LINE ทุกครั้งที่อัปโหลดภาษีซื้อและภาษีขายครบ</label>
       <input class="fin" id="lineNotifyUrl" placeholder="https://script.google.com/macros/s/.../exec?key=..." value="${esc(st.url)}" style="max-width:620px">
       <div class="line-row">
         <button class="btn primary sm" id="lineNotifySaveBtn" onclick="lineSave()">บันทึก</button>
@@ -560,6 +560,7 @@ function wsUploadCard(k){
     <label class="drop" id="drop"><input type="file" multiple accept=".pdf,.xlsx,.xls,.docx,.doc,.txt">
       <b>ลากไฟล์มาวาง หรือคลิกเพื่อเลือก</b><small>PDF · Excel (.xlsx .xls) · Word (.docx) · Text (.txt)</small></label>
     <div class="err" id="err" hidden></div>
+    <div class="hint" id="wsLineStatus" style="${lineStyle(k)}">${esc((LINE_STATUS[k]||{}).msg||"")}</div>
     <ul class="files">${W[k].files.map((f,i)=>`<li>
       <span class="ext">${esc(ext(f.name))}</span><span class="nm" title="${esc(f.name)}">${esc(f.name)}</span>
       ${f.status==="reading" ? `<span class="chip info" id="prog-${f.id}">กำลังอ่าน…</span>`
@@ -591,6 +592,7 @@ async function addWsFiles(k, list){
     }
     if (current===k) renderWorkspace(k);
   }
+  autoLine(k);   // ส่งการ์ดเข้า LINE อัตโนมัติเมื่อมีภาษีซื้อและภาษีขายครบ (แบบเดียวกับ PO ที่ส่งทุกครั้งที่ซิงก์)
   if (bad.length && current===k){ const el = document.getElementById("err"); el.hidden = false;
     el.textContent = (bad.every(n=>IMG.includes(ext(n))) ? "รูปถ่ายให้อัปโหลดที่เมนู “อัปโหลดรูปถ่าย”: " : bad.some(n=>ext(n)==="doc") ? "ไฟล์ Word รุ่นเก่า (.doc) ยังอ่านไม่ได้ ให้บันทึกเป็น .docx หรือ PDF ก่อน: " : "ยังไม่รองรับไฟล์ประเภทนี้: ") + bad.join(", "); }
 }
@@ -846,7 +848,7 @@ function lineSave(){
   if (enabled && !isValidLineRelayUrl(url)) return setLineStatus("ลิงก์ไม่ถูกต้อง — ต้องขึ้นต้นด้วย https://script.google.com/ และมี ?key=... ต่อท้าย", "err");
   if (!saveLineNotifySettings({enabled, url})) return setLineStatus("บันทึกไม่ได้ (เบราว์เซอร์บล็อกการเก็บข้อมูล)", "err");
   renderDashboard();   // แสดง/ซ่อนปุ่ม "ส่งเข้า LINE" ตามการตั้งค่า
-  setLineStatus(enabled ? "บันทึกแล้ว — กด “ส่งเข้า LINE” ที่การ์ดของแต่ละพื้นที่เพื่อส่ง" : "บันทึกแล้ว (ปิดแจ้งเตือนอยู่)", "ok");
+  setLineStatus(enabled ? "บันทึกแล้ว — จะแจ้งเตือนทุกครั้งที่อัปโหลดภาษีซื้อและภาษีขายครบ" : "บันทึกแล้ว (ปิดแจ้งเตือนอยู่)", "ok");
 }
 async function lineTest(){
   const url = document.getElementById("lineNotifyUrl").value.trim();
@@ -860,20 +862,41 @@ async function lineTest(){
   btn.disabled = false;
   setLineStatus((r.ok===false ? "ทดสอบไม่สำเร็จ: " : "ทดสอบ: ") + r.detail, r.ok===true ? "ok" : r.ok===false ? "err" : "");
 }
-function dashStatus(k, msg, kind){
-  const el = document.getElementById("dstat-"+k); if (!el) return;
-  el.textContent = msg; el.style.color = kind==="ok" ? "var(--ok)" : kind==="err" ? "var(--warn)" : "var(--muted)";
+// สถานะแจ้งเตือน LINE ของแต่ละพื้นที่ (แสดงทั้งในหน้าพื้นที่และบน Dashboard)
+const LINE_STATUS = {}, LAST_SENT = {};
+const lineStyle = k => { const x = LINE_STATUS[k]; return "color:" + (!x ? "var(--muted)" : x.kind==="ok" ? "var(--ok)" : x.kind==="err" ? "var(--warn)" : "var(--muted)"); };
+function setWsLine(k, msg, kind){
+  LINE_STATUS[k] = {msg, kind};
+  for (const id of ["dstat-"+k, current===k ? "wsLineStatus" : null]){
+    const el = id && document.getElementById(id); if (el){ el.textContent = msg; el.style.cssText = lineStyle(k); }
+  }
 }
-function dashAsk(k){ document.getElementById("dconf-"+k).hidden = false; document.getElementById("dsend-"+k).hidden = true; dashStatus(k, ""); }
+const lineSig = d => [d.period, d.buy.join(), d.sale.join(), d.status].join("|");
+async function sendCard(k, d){
+  LAST_SENT[k] = lineSig(d);
+  setWsLine(k, "กำลังส่งแจ้งเตือน LINE...");
+  const r = await sendLineMessage(loadLineNotifySettings().url, cardText(d), cardFlex(d));
+  if (r.ok===false) LAST_SENT[k] = null;   // ส่งไม่สำเร็จ อัปโหลดใหม่จะลองส่งอีกครั้ง
+  setWsLine(k, (r.ok===false ? "แจ้งเตือน LINE ไม่สำเร็จ: " : "แจ้งเตือน LINE: ") + r.detail, r.ok===true ? "ok" : r.ok===false ? "err" : "");
+}
+// ส่งอัตโนมัติ: เมื่อเปิดแจ้งเตือนไว้ และพื้นที่นั้นมีภาษีซื้อกับภาษีขายเดือนเดียวกันครบ
+// ยอดชุดเดิมจะไม่ส่งซ้ำ (เช่นอัปโหลดรายงานค่างวดเพิ่ม หรืออัปโหลดไฟล์เดิมซ้ำ)
+function autoLine(k){
+  if (!lineOn()) return;
+  const t = taxSummary(k);
+  if (t && t.mismatch) return setWsLine(k, "ยังไม่ส่งแจ้งเตือน LINE: รายงานภาษีซื้อกับภาษีขายเป็นคนละเดือน", "err");
+  const d = cardData(k); if (!d) return;
+  if (LAST_SENT[k] === lineSig(d)) return;
+  sendCard(k, d);
+}
+function dashAsk(k){ document.getElementById("dconf-"+k).hidden = false; document.getElementById("dsend-"+k).hidden = true; }
 function dashCancel(k){ document.getElementById("dconf-"+k).hidden = true; document.getElementById("dsend-"+k).hidden = false; }
 async function dashSendNow(k){
   dashCancel(k);
   const d = cardData(k); if (!d) return;
   const btn = document.getElementById("dsend-"+k); btn.disabled = true;
-  dashStatus(k, "กำลังส่งแจ้งเตือน LINE...");
-  const r = await sendLineMessage(loadLineNotifySettings().url, cardText(d), cardFlex(d));
+  await sendCard(k, d);
   btn.disabled = false;
-  dashStatus(k, (r.ok===false ? "แจ้งเตือน LINE ไม่สำเร็จ: " : "แจ้งเตือน LINE: ") + r.detail, r.ok===true ? "ok" : r.ok===false ? "err" : "");
 }
 
 /* ===== เมนูอัปโหลดรูปถ่าย ===== */
