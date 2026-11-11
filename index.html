@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>ระบบตรวจสอบและแปลงเอกสารภาษี — V17</title>
+<title>ระบบตรวจสอบและแปลงเอกสารภาษี — V21</title>
 <style>
 :root{
   --bg:#0f1318; --panel:#171c23; --panel2:#1e252e; --line:#2b3440;
@@ -134,6 +134,16 @@ details .frow{margin:12px 0 4px}
 .dash-empty{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
 .dash-empty h3{margin:0;flex:1}
 .empty-note{color:var(--muted)}
+
+.line-grid{display:flex;gap:24px;flex-wrap:wrap;align-items:flex-start}
+.line-prev{background:#8CABD9;border-radius:14px;padding:16px}
+.line-prev canvas{border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,.2)}
+.send-confirm{background:var(--panel2);border:1px solid var(--accent);border-radius:10px;padding:10px 12px;font-size:14px;display:flex;flex-direction:column;gap:8px}
+.send-cfg{margin-top:0}
+.send-cfg label{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--muted);margin:10px 0}
+.send-cfg .hint{font-size:12px}
+.send-sep{border:0;border-top:1px solid var(--line);width:100%;margin:4px 0}
+.line-actions{display:flex;flex-direction:column;gap:10px;flex:1;min-width:220px;max-width:340px}
 .chip.muted{background:var(--panel2);color:var(--muted)}
 .files .chip{max-width:46%;overflow:hidden;text-overflow:ellipsis}
 </style>
@@ -626,12 +636,205 @@ function renderWorkspace(k){
       </div></div>` : ""}
     ${buy ? reportCard(buy, "ภาษีซื้อ") : ""}
     ${sale ? reportCard(sale, "ภาษีขาย") : ""}
-    ${buy || sale ? checksCard(k) : ""}`;
+    ${buy || sale ? checksCard(k) : ""}
+    ${lineCard(k)}`;
+  bindLineCard();
   const dz = document.getElementById("drop"), input = dz.querySelector("input");
   input.onchange = () => addWsFiles(k, [...input.files]);
   dz.ondragover = e => { e.preventDefault(); dz.classList.add("over"); };
   dz.ondragleave = () => dz.classList.remove("over");
   dz.ondrop = e => { e.preventDefault(); dz.classList.remove("over"); addWsFiles(k, [...e.dataTransfer.files]); };
+}
+
+/* ===== การ์ดสรุปสำหรับส่ง LINE (ส่งด้วยมือ: รูปการ์ด / ข้อความ / Flex JSON) ===== */
+function cardData(k){
+  const {buy, sale} = W[k], t = taxSummary(k);
+  if (!t || t.mismatch) return null;
+  const n = problems(k), f = r => [bs(r.net.value), bs(r.net.vat), bs(r.net.total)];
+  return {name:WS[k].name, period:buy.period.label, buy:f(buy), sale:f(sale), pay:bs(t.amount), excess:t.excess ? bs(t.excess) : "",
+    ok:n===0, status: n===0 ? "✓ ตรวจแล้ว: ยอดภาษีซื้อและภาษีขายตรงกับรายงาน" : `พบ ${n} รายการที่ต้องตรวจ ดูรายละเอียดในระบบ`,
+    source:`ที่มา: รายงานภาษีซื้อ ${num(buy.count)} รายการ · รายงานภาษีขาย ${num(sale.count)} ใบ`};
+}
+const ROW3 = ["มูลค่าสินค้าหรือบริการ","ภาษีมูลค่าเพิ่ม","รวม"];
+function cardText(d){
+  const sec = (title, v) => `${title}\n` + ROW3.map((l,i)=>`  ${l}: ${v[i]}`).join("\n");
+  return [`สรุปภาษีมูลค่าเพิ่ม ${d.name}`, `ภาษีเดือน ${d.period}`, "", sec("ภาษีซื้อ", d.buy), "", sec("ภาษีขาย", d.sale), "",
+    `ภาษีที่ต้องจ่าย ภ.พ.30: ${d.pay} บาท`, "(ภาษีขาย − ภาษีซื้อ)", ...(d.excess ? [`ภาษีซื้อเกิน: ${d.excess}`] : []), "", d.status].join("\n");
+}
+function cardFlex(d){
+  const T = (text, o) => Object.assign({type:"text", text}, o);
+  const row = (label, val, bold, color) => ({type:"box", layout:"horizontal", margin:"sm", contents:[
+    T(label, {size:"sm", color:"#555555", flex:6, wrap:true}),
+    T(val, {size:"sm", weight: bold ? "bold" : "regular", color: color || "#111111", align:"end", flex:5})]});
+  const sec = (title, v, margin) => ({type:"box", layout:"vertical", margin, contents:[
+    T(title, {size:"md", weight:"bold", color:"#0F2A47"}), row(ROW3[0], v[0]), row(ROW3[1], v[1], true, "#1A6FD1"), row(ROW3[2], v[2])]});
+  const sep = {type:"separator", margin:"lg"};
+  return {type:"flex",
+    altText:`สรุปภาษี ${d.name} ${d.period}: ภาษีซื้อ ${d.buy[1]} · ภาษีขาย ${d.sale[1]} · ภาษีที่ต้องจ่าย ภ.พ.30 ${d.pay} บาท` + (d.excess ? ` (ภาษีซื้อเกิน ${d.excess})` : ""),
+    contents:{type:"bubble", size:"mega",
+      header:{type:"box", layout:"vertical", backgroundColor:"#0F2A47", paddingAll:"18px", contents:[
+        T("สรุปภาษีมูลค่าเพิ่ม", {size:"xs", color:"#9CCBFF"}), T(d.name, {size:"xl", weight:"bold", color:"#FFFFFF", margin:"xs"}),
+        T("ภาษีเดือน "+d.period, {size:"xs", color:"#C9D6E3", margin:"xs"})]},
+      body:{type:"box", layout:"vertical", paddingAll:"18px", contents:[
+        sec("ภาษีซื้อ", d.buy, "none"), sep, sec("ภาษีขาย", d.sale, "lg"), sep,
+        T("ภาษีที่ต้องจ่าย ภ.พ.30", {size:"xs", color:"#888888", margin:"lg"}),
+        T(d.pay+" บาท", {size:"xxl", weight:"bold", color:"#111111", margin:"xs"}),
+        T("ภาษีขาย − ภาษีซื้อ", {size:"xxs", color:"#999999", margin:"xs"}),
+        ...(d.excess ? [{type:"box", layout:"horizontal", margin:"md", contents:[
+          T("ภาษีซื้อเกิน", {size:"sm", color:"#555555", flex:6}), T(d.excess, {size:"sm", weight:"bold", color:"#111111", align:"end", flex:5})]}] : []),
+        {type:"box", layout:"vertical", margin:"lg", backgroundColor: d.ok ? "#E8F7EF" : "#FFF4DB", cornerRadius:"8px", paddingAll:"10px",
+          contents:[T(d.status, {size:"xs", color: d.ok ? "#1E8E5A" : "#9A6700", weight:"bold", wrap:true})]}]},
+      footer:{type:"box", layout:"vertical", paddingAll:"12px", backgroundColor:"#F5F7FA", contents:[T(d.source, {size:"xxs", color:"#999999", wrap:true})]}}};
+}
+// วาดการ์ดลง canvas เพื่อบันทึก/คัดลอกเป็นรูป (กว้าง 300 หน่วย ขยาย 3 เท่าให้คมชัด)
+function drawCard(d){
+  const CW = 300, P = 18, S = 3, FONT = '"Sarabun","Leelawadee UI","Noto Sans Thai","Tahoma",sans-serif';
+  const cv = document.createElement("canvas"), ctx = cv.getContext("2d");
+  const font = (px, bold) => { ctx.font = `${bold?"700":"400"} ${px}px ${FONT}`; };
+  const wrap = (text, maxW) => {
+    const parts = window.Intl && Intl.Segmenter ? [...new Intl.Segmenter("th",{granularity:"word"}).segment(text)].map(x=>x.segment) : [...text];
+    const lines = []; let cur = "";
+    for (const p of parts){ if (cur && ctx.measureText(cur+p).width > maxW){ lines.push(cur.trimEnd()); cur = p.trimStart(); } else cur += p; }
+    if (cur) lines.push(cur); return lines;
+  };
+  const paint = dry => {
+    let y = 0;
+    const text = (s, px, color, o={}) => {            // o: bold, right, x, maxW, lh
+      font(px, o.bold); const lines = o.maxW ? wrap(s, o.maxW) : [s], lh = px*1.45;
+      for (const line of lines){ if (!dry){ ctx.fillStyle = color; ctx.textBaseline = "middle"; ctx.textAlign = o.right ? "right" : "left";
+        ctx.fillText(line, o.right ? CW-P : (o.x||P), y+lh/2); } y += lh; }
+    };
+    const pair = (label, val, bold, color) => { const y0 = y; text(label, 14, "#555555"); y = y0; text(val, 14, color||"#111111", {right:true, bold}); y += 3; };
+    const sepLine = () => { y += 12; if (!dry){ ctx.fillStyle = "#E5E7EB"; ctx.fillRect(P, y, CW-2*P, 1); } y += 13; };
+    const section = (title, v) => { text(title, 16, "#0F2A47", {bold:true}); y += 3; pair(ROW3[0], v[0]); pair(ROW3[1], v[1], true, "#1A6FD1"); pair(ROW3[2], v[2]); };
+    // หัวการ์ด
+    const headH = P + 13*1.45 + 2 + 22*1.45 + 2 + 13*1.45 + P;
+    if (!dry){ ctx.fillStyle = "#0F2A47"; ctx.fillRect(0, 0, CW, headH); }
+    y = P; text("สรุปภาษีมูลค่าเพิ่ม", 13, "#9CCBFF"); y += 2; text(d.name, 22, "#FFFFFF", {bold:true}); y += 2; text("ภาษีเดือน "+d.period, 13, "#C9D6E3");
+    y = headH + P;
+    section("ภาษีซื้อ", d.buy); sepLine(); section("ภาษีขาย", d.sale); sepLine();
+    text("ภาษีที่ต้องจ่าย ภ.พ.30", 13, "#888888"); y += 2; text(d.pay+" บาท", 29, "#111111", {bold:true}); y += 2; text("ภาษีขาย − ภาษีซื้อ", 11, "#999999");
+    if (d.excess){ y += 8; pair("ภาษีซื้อเกิน", d.excess, true); }
+    y += 12;
+    font(13, true); const sl = wrap(d.status, CW-2*P-20), boxH = sl.length*13*1.45 + 20;
+    if (!dry){ ctx.fillStyle = d.ok ? "#E8F7EF" : "#FFF4DB"; ctx.beginPath();
+      if (ctx.roundRect) ctx.roundRect(P, y, CW-2*P, boxH, 8); else ctx.rect(P, y, CW-2*P, boxH); ctx.fill(); }
+    const yb = y; y += 10; text(d.status, 13, d.ok ? "#1E8E5A" : "#9A6700", {bold:true, x:P+10, maxW:CW-2*P-20}); y = yb + boxH + P;
+    // ท้ายการ์ด
+    font(11, false); const fl = wrap(d.source, CW-24), footH = fl.length*11*1.45 + 24;
+    if (!dry){ ctx.fillStyle = "#F5F7FA"; ctx.fillRect(0, y, CW, footH); }
+    const yf = y; y += 12; text(d.source, 11, "#999999", {x:12, maxW:CW-24}); return yf + footH;
+  };
+  const H = Math.ceil(paint(true));
+  cv.width = CW*S; cv.height = H*S; ctx.scale(S, S);
+  ctx.fillStyle = "#FFFFFF"; ctx.fillRect(0, 0, CW, H);
+  paint(false);
+  return cv;
+}
+let cardCanvas = null, cardInfo = null;
+function lineCard(k){
+  const d = cardData(k); cardInfo = d; if (!d) return "";
+  return `<div class="card">
+    <div class="card-head"><div><h2>การ์ดสรุปสำหรับส่ง LINE</h2><p>สร้างจากยอดด้านบน · ส่งเข้ากลุ่มผ่านระบบ หรือคัดลอกรูปไปวางเอง</p></div></div>
+    <div class="line-grid">
+      <div class="line-prev" id="cardPrev"></div>
+      <div class="line-actions">
+        <button class="btn primary" id="sendBtn" onclick="sendAsk()">ส่งเข้า LINE</button>
+        <div class="send-confirm" id="sendConfirm" hidden>
+          <span>ส่งการ์ด ${esc(d.name)} ภาษีเดือน ${esc(d.period)} เข้า LINE?</span>
+          <div><button class="btn primary sm" onclick="sendNow()">ยืนยันส่ง</button> <button class="btn sm" onclick="sendCancel()">ยกเลิก</button></div>
+        </div>
+        <div class="hint" id="sendMsg"></div>
+        <details class="send-cfg" id="sendCfg" ${gasCfg().url && gasCfg().key ? "" : "open"}>
+          <summary>ตั้งค่าการส่ง</summary>
+          <label>URL ของ Google Apps Script<input class="fin" id="cfgUrl" placeholder="https://script.google.com/macros/s/.../exec" value="${esc(gasCfg().url)}"></label>
+          <label>รหัสส่ง (SEND_KEY)<input class="fin" id="cfgKey" type="password" value="${esc(gasCfg().key)}"></label>
+          <div><button class="btn sm" onclick="cfgSave()">บันทึก</button> <button class="btn sm" onclick="cfgTest()">ทดสอบการเชื่อมต่อ</button></div>
+          <p class="hint">ค่าทั้งสองเก็บไว้ในเบราว์เซอร์เครื่องนี้เท่านั้น ไม่ได้อยู่ในโค้ดของเว็บ</p>
+        </details>
+        <hr class="send-sep">
+        <button class="btn" onclick="cardAct('copyImg')">คัดลอกรูปการ์ด</button>
+        <button class="btn" onclick="cardAct('saveImg')">บันทึกเป็นรูป (PNG)</button>
+        <button class="btn" onclick="cardAct('copyText')">คัดลอกเป็นข้อความ</button>
+        <button class="btn" onclick="cardAct('copyFlex')">คัดลอก Flex JSON</button>
+        <div class="hint" id="cardMsg"></div>
+        <p class="hint">รูปและข้อความวางในแชต LINE ได้เลย ส่วน Flex JSON ใช้กับ LINE Messaging API (วางในแชตโดยตรงไม่ได้)</p>
+      </div>
+    </div>
+  </div>`;
+}
+function bindLineCard(){
+  const box = document.getElementById("cardPrev"); if (!box || !cardInfo) return;
+  cardCanvas = drawCard(cardInfo);
+  cardCanvas.style.width = "300px"; cardCanvas.style.height = "auto"; cardCanvas.style.display = "block";
+  box.appendChild(cardCanvas);
+}
+async function copyText(t){
+  try { await navigator.clipboard.writeText(t); }
+  catch(e){ const a = document.createElement("textarea"); a.value = t; document.body.appendChild(a); a.select(); document.execCommand("copy"); a.remove(); }
+}
+function saveCard(blob){
+  const a = document.createElement("a"), p = cardInfo.period.replace(/\s+/g,"-");
+  a.href = URL.createObjectURL(blob); a.download = `VAT-Summary-${cardInfo.name.replace(/\s+/g,"-")}-${p}.png`;
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(a.href), 2000);
+}
+async function cardAct(act){
+  const msg = t => { const el = document.getElementById("cardMsg"); el.textContent = t; el.style.color = "var(--ok)"; };
+  if (act==="copyText"){ await copyText(cardText(cardInfo)); return msg("คัดลอกข้อความแล้ว"); }
+  if (act==="copyFlex"){ await copyText(JSON.stringify(cardFlex(cardInfo), null, 2)); return msg("คัดลอก Flex JSON แล้ว"); }
+  const blob = await new Promise(res=>cardCanvas.toBlob(res, "image/png"));
+  if (act==="saveImg"){ saveCard(blob); return msg("บันทึกรูปแล้ว"); }
+  try { await navigator.clipboard.write([new ClipboardItem({"image/png": blob})]); msg("คัดลอกรูปแล้ว กด Ctrl+V ในแชต LINE ได้เลย"); }
+  catch(e){ saveCard(blob); msg("เบราว์เซอร์นี้คัดลอกรูปไม่ได้ จึงบันทึกเป็นไฟล์ให้แทน"); }
+}
+
+/* ===== ส่งเข้ากลุ่ม LINE ผ่าน Google Apps Script ===== */
+const CFG_KEYS = {url:"taxsys.gasUrl", key:"taxsys.sendKey"};
+function gasCfg(){
+  const get = k => { try { return localStorage.getItem(k) || ""; } catch(e){ return ""; } };
+  return {url:get(CFG_KEYS.url), key:get(CFG_KEYS.key)};
+}
+const GAS_RE = /^https:\/\/script\.google\.com\/macros\/s\/[\w-]+\/exec$/;
+function sendNote(t, bad){ const el = document.getElementById("sendMsg"); if (!el) return; el.textContent = t; el.style.color = bad ? "var(--warn)" : "var(--ok)"; }
+function cfgRead(){
+  const url = document.getElementById("cfgUrl").value.trim(), key = document.getElementById("cfgKey").value;
+  if (!GAS_RE.test(url)){ sendNote("URL ต้องเป็นลิงก์ Web app ของ Apps Script ที่ลงท้ายด้วย /exec", true); return null; }
+  if (!key){ sendNote("ใส่รหัสส่ง (SEND_KEY)", true); return null; }
+  return {url, key};
+}
+function cfgSave(){
+  const c = cfgRead(); if (!c) return;
+  try { localStorage.setItem(CFG_KEYS.url, c.url); localStorage.setItem(CFG_KEYS.key, c.key); sendNote("บันทึกการตั้งค่าแล้ว"); }
+  catch(e){ sendNote("เบราว์เซอร์นี้บันทึกค่าไม่ได้ ต้องกรอกใหม่ทุกครั้งที่เปิดหน้า", true); }
+}
+async function cfgTest(){
+  const c = cfgRead(); if (!c) return;
+  sendNote("กำลังทดสอบ…");
+  try {
+    const j = await (await fetch(c.url)).json();
+    if (!j.ok) return sendNote("Apps Script ตอบกลับผิดปกติ", true);
+    sendNote("✓ เชื่อมต่อได้ · ปลายทาง: " + (j.inGroup ? "กลุ่ม LINE" : "เพื่อนทุกคนของ OA (ยังไม่ได้เชิญเข้ากลุ่ม)"));
+  } catch(e){ sendNote("เชื่อมต่อไม่ได้ ตรวจ URL และการ Deploy (Who has access = Anyone)", true); }
+}
+function sendAsk(){
+  const c = gasCfg();
+  if (!c.url || !c.key){ document.getElementById("sendCfg").open = true; return sendNote("ตั้งค่า URL และรหัสส่งก่อน แล้วกดบันทึก", true); }
+  document.getElementById("sendConfirm").hidden = false; document.getElementById("sendBtn").hidden = true; sendNote("");
+}
+function sendCancel(){ document.getElementById("sendConfirm").hidden = true; document.getElementById("sendBtn").hidden = false; }
+async function sendNow(){
+  const c = gasCfg(); sendCancel();
+  const btn = document.getElementById("sendBtn"); btn.disabled = true; sendNote("กำลังส่ง…");
+  try {
+    const res = await fetch(c.url, {method:"POST", headers:{"Content-Type":"text/plain;charset=utf-8"},   // text/plain เพื่อไม่ให้เบราว์เซอร์ส่ง preflight ซึ่ง Apps Script ไม่รองรับ
+      body: (()=>{ const f = cardFlex(cardInfo);   // รูปแบบเดียวกับตัวกลางของ PO: text + flex + altText
+        return JSON.stringify({key:c.key, text:cardText(cardInfo), altText:f.altText, flex:f.contents}); })()});
+    const j = await res.json();
+    const where = j.target==="group" ? "กลุ่ม LINE" : "LINE (เพื่อนทุกคนของ OA)";
+    if (j.ok && j.flexFallback) sendNote("ส่งแล้ว แต่ LINE ไม่รับการ์ด จึงส่งเป็นข้อความแทน แจ้งผู้ดูแลระบบให้ตรวจรูปแบบการ์ด", true);
+    else j.ok ? sendNote(`✓ ส่งเข้า${where}แล้ว (${new Date().toLocaleTimeString("th-TH",{hour:"2-digit",minute:"2-digit"})} น.)`) : sendNote("ส่งไม่สำเร็จ: " + (j.error || "ไม่ทราบสาเหตุ"), true);
+  } catch(e){ sendNote("ส่งไม่สำเร็จ: เชื่อมต่อ Apps Script ไม่ได้", true); }
+  btn.disabled = false;
 }
 
 /* ===== เมนูอัปโหลดรูปถ่าย ===== */
