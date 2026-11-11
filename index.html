@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>ระบบตรวจสอบและแปลงเอกสารภาษี — V26</title>
+<title>ระบบตรวจสอบและแปลงเอกสารภาษี — V28</title>
 <style>
 :root{
   --bg:#0f1318; --panel:#171c23; --panel2:#1e252e; --line:#2b3440;
@@ -156,6 +156,19 @@ details .frow{margin:12px 0 4px}
 .kpis{margin-bottom:18px}
 .check-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px;font-size:15px}
 .check-list li.ok{color:var(--ok)} .check-list li.bad{color:var(--warn)}
+.dash-empty-state{display:flex;flex-direction:column;align-items:center;text-align:center;gap:8px;padding:48px 20px}
+.dash-empty-state b{font-size:19px}
+.dash-empty-state .hint{margin:0 0 8px}
+a{color:#9ccbff}
+.dash-head-r{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.saved{font-size:13px;color:var(--ok)}
+.month-sel{background:var(--panel2);color:var(--text);border:1px solid var(--accent);border-radius:10px;padding:7px 12px;font:inherit;font-weight:600}
+.delta{font-weight:700;color:var(--text)}
+.trend{display:flex;align-items:flex-end;gap:16px;height:150px;padding-top:10px}
+.trend .bar{flex:1;display:flex;flex-direction:column;align-items:center;gap:6px;font-size:13px;color:var(--muted);cursor:pointer}
+.trend .bar i{display:block;width:44px;max-width:80%;border-radius:6px 6px 0 0;background:#2f6db0}
+.trend .bar.cur i{background:#9ccbff}.trend .bar.cur{color:var(--text);font-weight:600}
+.fl{display:block;font-size:13px;color:var(--muted);margin-bottom:6px}
 .dash-sep{border:0;border-top:1px solid var(--line);margin:30px 0}
 .grid2 .card{margin-bottom:18px}
 .sum-table td:first-child{white-space:nowrap}
@@ -534,66 +547,79 @@ function sumTable(k){
       ${t && t.excess ? `<tr class="excess"><td>ภาษีซื้อเกิน</td><td></td><td class="num">${bs(t.excess)}</td><td></td></tr>` : ""}
     </tbody></table></div>`;
 }
-function dashChecks(k){
-  const {buy, sale} = W[k], t = taxSummary(k), h = hpCheck(k), items = [];
-  const add = (ok, label) => items.push(`<li class="${ok?'ok':'bad'}">${ok?'✓':'⚠'} ${label}</li>`);
-  if (t) add(!t.mismatch, t.mismatch ? "รายงานภาษีซื้อกับภาษีขายเป็นคนละเดือน" : "ภาษีซื้อและภาษีขายเป็นเดือนเดียวกัน");
-  const rs = [buy, sale].filter(Boolean);
-  if (rs.length){
-    add(rs.every(r=>r.sumMatches && !r.unbalanced), rs.every(r=>r.sumMatches && !r.unbalanced) ? "ยอดตรงกับยอดท้ายรายงาน" : "ยอดบางส่วนไม่ตรงกับยอดท้ายรายงาน");
-    const out = rs.reduce((a,r)=>a+r.outOfPeriod,0);
-    add(!out, out ? `ใบกำกับนอกเดือนภาษี ${num(out)} ใบ` : "ใบกำกับอยู่ในเดือนภาษีทุกใบ");
-    const dg = rs.reduce((a,r)=>a+r.dup,0) + (sale ? sale.gaps : 0);
-    add(!dg, dg ? `พบเลขที่ซ้ำหรือขาดช่วง ${num(dg)} รายการ` : "ไม่พบเลขที่ซ้ำหรือขาดช่วง");
-  }
-  if (h) add(h.period && !h.bad, h.period && !h.bad ? "รายงานค่างวดตรงกับรายงานภาษีขาย" : "รายงานค่างวดไม่ตรงกับรายงานภาษีขาย");
-  return `<ul class="check-list">${items.join("")}</ul>`;
-}
-function dashLine(k){
-  const d = cardData(k);
+const SEL = {};   // เดือนที่เลือกดูบน Dashboard
+function selRec(k){ const recs = records(k); return recs.find(r=>r.period===SEL[k]) || recs[0] || null; }
+function dashLine(k, rec){
   if (!lineOn()) return `<p class="hint" style="margin:0 0 10px">ยังไม่ได้เปิดแจ้งเตือน LINE</p>
     <button class="btn sm" onclick="go('settings')">ไปที่ตั้งค่า →</button>`;
-  if (!d) return `<p class="hint" style="margin:0">จะส่งการ์ดสรุปเข้า LINE อัตโนมัติเมื่ออัปโหลดภาษีซื้อและภาษีขายเดือนเดียวกันครบ</p>
-    <div class="hint" id="dstat-${k}" style="${lineStyle(k)}">${esc((LINE_STATUS[k]||{}).msg||"")}</div>`;
-  return `<div class="hint" id="dstat-${k}" style="${lineStyle(k)};margin:0 0 10px">${esc((LINE_STATUS[k]||{}).msg||"ยังไม่ได้ส่ง")}</div>
-    <button class="btn sm" id="dsend-${k}" onclick="dashAsk('${k}')">ส่งเข้า LINE อีกครั้ง</button>
+  const d = cardFromRecord(rec), st = LINE_STATUS[k];
+  return `<div class="hint" id="dstat-${k}" style="${lineStyle(k)};margin:0 0 10px">${esc(st ? st.msg : "ส่งอัตโนมัติเมื่ออัปโหลดภาษีซื้อและภาษีขายครบ")}</div>
+    <button class="btn sm" id="dsend-${k}" onclick="dashAsk('${k}')">ส่งการ์ดเดือนนี้เข้า LINE</button>
     <div class="send-confirm" id="dconf-${k}" hidden>
-      <span>ส่งการ์ดสรุปภาษี ${esc(WS[k].name)} ภาษีเดือน ${esc(d.period)} อีกครั้ง?</span>
+      <span>ส่งการ์ดสรุปภาษี ${esc(d.name)} ภาษีเดือน ${esc(d.period)} เข้า LINE?</span>
       <div><button class="btn primary sm" onclick="dashSendNow('${k}')">ยืนยันส่ง</button> <button class="btn sm" onclick="dashCancel('${k}')">ยกเลิก</button></div>
     </div>`;
 }
+function delta(cur, prev, label){
+  if (prev==null) return "";
+  if (!prev) return ` · ${label} ${bs(prev)}`;
+  const pct = (cur-prev)/prev*100;
+  return ` · เทียบ ${label} <span class="delta">${pct>=0 ? "▲" : "▼"} ${Math.abs(pct).toFixed(1)}%</span>`;
+}
+function trendCard(k, recs){
+  const list = recs.slice(0,6).reverse();
+  if (list.length < 2) return "";
+  const max = Math.max(...list.map(r=>r.pay), 1);
+  return `<div class="card"><h2>ภาษีที่ต้องจ่ายรายเดือน</h2>
+    <div class="trend">${list.map(r=>`<div class="bar ${r.period===SEL[k] ? "cur" : ""}" onclick="dashSel('${k}','${r.period}')" title="${esc(r.label)}">
+      <span>${bs(r.pay)}</span><i style="height:${Math.max(2, Math.round(r.pay/max*100))}px"></i>${esc(shortLabel(r.period))}</div>`).join("")}</div></div>`;
+}
+const shortLabel = key => { const [y,m] = key.split("-").map(Number); return ["ม.ค.","ก.พ.","มี.ค.","เม.ย.","พ.ค.","มิ.ย.","ก.ค.","ส.ค.","ก.ย.","ต.ค.","พ.ย.","ธ.ค."][m-1] + " " + String(y).slice(2); };
+function dashSel(k, p){ SEL[k] = p; renderDashboard(); }
 function dashSection(k){
-  const {buy, sale} = W[k], t = taxSummary(k), p = periodOf(k), complete = buy && sale;
-  const tile = (label, r, sub) => `<div class="kpi big"><span>${label}</span><b>${r ? bs(r.net.vat) : "—"}</b><small>${r ? sub : "ยังไม่ได้อัปโหลด"}</small></div>`;
-  const row = (label, r) => `<tr><td>${label}</td>${r
-    ? `<td class="num">${bs(r.net.value)}</td><td class="num">${bs(r.net.vat)}</td><td class="num">${bs(r.net.total)}</td>`
-    : `<td class="num wait" colspan="3">ยังไม่ได้อัปโหลด</td>`}</tr>`;
-  const head = `<div class="dash-head"><h1>Dashboard · ${WS[k].name}</h1>${p ? `<span class="chip info">ภาษีเดือน ${p.label}</span>` : ""}</div>`;
-  if (!hasData(k)) return `${head}<p class="sub">อัปโหลดรายงานภาษีซื้อและรายงานภาษีขายเพื่อเริ่มต้น</p>${wsUploadCard(k)}`;
-  return `${head}
+  const recs = records(k), rec = selRec(k);
+  if (rec) SEL[k] = rec.period;
+  const load = LOAD.state==="loading" ? `<p class="hint">${esc(LOAD.msg)}</p>` : LOAD.state==="err" ? `<p class="hint" style="color:var(--warn)">${esc(LOAD.msg)}</p>` : "";
+  const partial = hasData(k) && !localRecord(k) ? `<p class="hint">อัปโหลดในเครื่องนี้ยังไม่ครบ · <a href="#" onclick="go('${k}');return false">ไปอัปโหลดไฟล์ที่ ${WS[k].name} →</a></p>` : "";
+  if (!rec) return `<div class="dash-head"><h1>Dashboard · ${WS[k].name}</h1></div>${load}${partial}
+    <div class="card dash-empty-state">
+      <b>ยังไม่มีข้อมูล</b>
+      <p class="hint">อัปโหลดรายงานภาษีซื้อและรายงานภาษีขายที่เมนู ${WS[k].name} แล้วยอดสรุปจะแสดงที่นี่</p>
+      <button class="btn primary" style="width:auto" onclick="go('${k}')">ไปอัปโหลดไฟล์ที่ ${WS[k].name} →</button>
+    </div>`;
+  const prev = recs.find(r=>r.period===prevKey(rec.period)), pl = prev ? shortLabel(prev.period) : "";
+  const sv = SAVE_STATUS[k] && rec.local && !rec.savedAt ? SAVE_STATUS[k] : null;
+  const saved = rec.savedAt ? `<span class="saved">☁ บันทึกลง Google Sheet แล้ว ${esc(rec.savedAt)}</span>`
+    : sv ? `<span class="saved" style="color:${sv.kind==="err" ? "var(--warn)" : "var(--muted)"}">${esc(sv.msg)}</span>`
+    : relay() ? "" : `<span class="saved" style="color:var(--muted)">ยังไม่ได้บันทึกลง Google Sheet</span>`;
+  const picker = recs.length > 1
+    ? `<select class="month-sel" onchange="dashSel('${k}', this.value)">${recs.map(r=>`<option value="${r.period}" ${r.period===rec.period ? "selected" : ""}>ภาษีเดือน ${esc(r.label)}</option>`).join("")}</select>`
+    : `<span class="chip info">ภาษีเดือน ${esc(rec.label)}</span>`;
+  const row = (label, a) => `<tr><td>${label}</td><td class="num">${bs(a[0])}</td><td class="num">${bs(a[1])}</td><td class="num">${bs(a[2])}</td></tr>`;
+  return `<div class="dash-head"><h1>Dashboard · ${WS[k].name}</h1><div class="dash-head-r">${saved}${picker}</div></div>${load}${partial}
     <div class="kpis">
-      ${tile("ภาษีซื้อ", buy, buy ? num(buy.count)+" รายการ" : "")}
-      ${tile("ภาษีขาย", sale, sale ? num(sale.count)+" ใบ" : "")}
-      <div class="kpi big result"><span>ภาษีที่ต้องจ่าย ภ.พ.30</span><b>${t && !t.mismatch ? bs(t.amount) : "—"}</b>
-        <small>${t && t.mismatch ? "รายงานเป็นคนละเดือน" : t && t.excess ? "ภาษีซื้อเกิน " + bs(t.excess) : "ภาษีขาย − ภาษีซื้อ"}</small></div>
+      <div class="kpi big"><span>ภาษีซื้อ</span><b>${bs(rec.buy[1])}</b><small>${num(rec.buyCount)} รายการ${delta(rec.buy[1], prev && prev.buy[1], pl)}</small></div>
+      <div class="kpi big"><span>ภาษีขาย</span><b>${bs(rec.sale[1])}</b><small>${num(rec.saleCount)} ใบ${delta(rec.sale[1], prev && prev.sale[1], pl)}</small></div>
+      <div class="kpi big result"><span>ภาษีที่ต้องจ่าย ภ.พ.30</span><b>${bs(rec.pay)}</b>
+        <small>${rec.excess ? "ภาษีซื้อเกิน " + bs(rec.excess) : "ภาษีขาย − ภาษีซื้อ"}${prev ? ` · ${pl} จ่าย ${bs(prev.pay)}` : ""}</small></div>
     </div>
+    ${trendCard(k, recs)}
     <div class="card">
-      <div class="card-head"><h2>รายละเอียด</h2><button class="btn sm" style="width:auto" onclick="go('${k}')">ดูรายละเอียดทั้งหมด →</button></div>
+      <div class="card-head"><h2>รายละเอียด</h2>${rec.local ? `<button class="btn sm" style="width:auto" onclick="go('${k}')">ดูรายละเอียดทั้งหมด →</button>` : ""}</div>
       <div class="table-wrap"><table class="sum-table">
         <thead><tr><th></th><th class="num">มูลค่าสินค้าหรือบริการ</th><th class="num">ภาษีมูลค่าเพิ่ม</th><th class="num">รวม</th></tr></thead>
-        <tbody>${row("ภาษีซื้อ", buy)}${row("ภาษีขาย", sale)}</tbody>
+        <tbody>${row("ภาษีซื้อ", rec.buy)}${row("ภาษีขาย", rec.sale)}</tbody>
       </table></div>
     </div>
-    <div class="grid2">
-      <div class="card"><h2 style="margin-bottom:10px">สถานะการตรวจ</h2>${dashChecks(k)}</div>
-      <div class="card"><h2 style="margin-bottom:10px">แจ้งเตือน LINE</h2>${dashLine(k)}</div>
-    </div>
-    ${complete ? "" : wsUploadCard(k)}`;
+    <div class="${relay() ? "grid2" : ""}">
+      <div class="card"><h2 style="margin-bottom:10px">สถานะการตรวจ</h2>
+        <ul class="check-list">${rec.checks.map(c=>`<li class="${c.ok?'ok':'bad'}">${c.ok?'✓':'⚠'} ${esc(c.label)}</li>`).join("") || '<li>—</li>'}</ul></div>
+      ${relay() ? `<div class="card"><h2 style="margin-bottom:10px">แจ้งเตือน LINE</h2>${dashLine(k, rec)}</div>` : ""}
+    </div>`;   /* เครื่องที่เปิดดูอย่างเดียว (ผู้บริหาร) ไม่แสดงส่วนส่ง LINE */
 }
 function renderDashboard(){
   const keys = Object.keys(WS).filter(k=>!WS[k].hidden);
   $view.innerHTML = keys.map(dashSection).join('<hr class="dash-sep">');
-  if (keys.length===1) bindWsUpload(keys[0]);
 }
 
 /* ===== ตั้งค่า ===== */
@@ -610,6 +636,14 @@ function renderSettings(){
         <button class="btn sm" id="lineNotifyTestBtn" onclick="lineTest()">ส่งข้อความทดสอบ</button>
         <span class="hint" id="lineNotifyStatus" style="margin:0"></span>
       </div>
+    </div>
+    <div class="card">
+      <p class="card-title">☁ บันทึกยอดลง Google Sheet</p>
+      <p class="hint" style="margin:0 0 12px">เมื่ออัปโหลดภาษีซื้อและภาษีขายเดือนเดียวกันครบ ระบบบันทึกยอดสรุปของเดือนนั้นลง Google Sheet ผ่านลิงก์ Apps Script ด้านบน (เฉพาะตัวเลขสรุป ไม่ส่งไฟล์รายงาน) เปิดเว็บเครื่องไหนก็เห็นยอดล่าสุด</p>
+      <div class="hint" id="sheetInfo" style="margin:0 0 12px">${sheetInfo()}</div>
+      <label class="fl">รหัสดูข้อมูล (VIEW_KEY ใน Apps Script) — ใส่ไว้ในปุ่ม “เปิดดูบนเว็บ” ของการ์ด LINE ให้ผู้บริหารเปิดดูยอดได้</label>
+      <input class="fin" id="viewKey" type="password" value="${esc(st.view)}" style="max-width:320px">
+      <p class="hint" style="margin:8px 0 0">กดปุ่ม “บันทึก” ในกล่องแจ้งเตือน LINE ด้านบนเพื่อบันทึกค่านี้</p>
     </div>`;
 }
 
@@ -620,6 +654,7 @@ function wsUploadCard(k){
     <label class="drop" id="drop"><input type="file" multiple accept=".pdf,.xlsx,.xls,.docx,.doc,.txt">
       <b>ลากไฟล์มาวาง หรือคลิกเพื่อเลือก</b><small>PDF · Excel (.xlsx .xls) · Word (.docx) · Text (.txt)</small></label>
     <div class="err" id="err" hidden></div>
+    <div class="hint" id="wsSaveStatus" style="color:${(SAVE_STATUS[k]||{}).kind==="err" ? "var(--warn)" : (SAVE_STATUS[k]||{}).kind==="ok" ? "var(--ok)" : "var(--muted)"}">${esc((SAVE_STATUS[k]||{}).msg||"")}</div>
     <div class="hint" id="wsLineStatus" style="${lineStyle(k)}">${esc((LINE_STATUS[k]||{}).msg||"")}</div>
     <ul class="files">${W[k].files.map((f,i)=>`<li>
       <span class="ext">${esc(ext(f.name))}</span><span class="nm" title="${esc(f.name)}">${esc(f.name)}</span>
@@ -638,7 +673,7 @@ async function addWsFiles(k, list){
     if (!reader){ bad.push(file.name); continue; }
     const f = {id:++fileSeq, name:file.name, size:file.size, status:"reading"};
     W[k].files.push(f);
-    if (current===k) renderWorkspace(k); else if (current==="dashboard") renderDashboard();
+    if (current===k) renderWorkspace(k);
     try {
       const pages = await reader(file, (n,total)=>{ const el = document.getElementById("prog-"+f.id); if (el) el.textContent = `กำลังอ่าน… หน้า ${n}/${total}`; });
       const r = parseReport(pages, file);
@@ -650,8 +685,9 @@ async function addWsFiles(k, list){
     } catch(e){
       Object.assign(f, {status:"error", msg: e && /^(ไม่|ยัง)/.test(e.message||"") ? e.message : "อ่านไฟล์ไม่ได้"});
     }
-    if (current===k) renderWorkspace(k); else if (current==="dashboard") renderDashboard();
+    if (current===k) renderWorkspace(k);
   }
+  autoSave(k);   // บันทึกยอดสรุปของเดือนลง Google Sheet
   autoLine(k);   // ส่งการ์ดเข้า LINE อัตโนมัติเมื่อมีภาษีซื้อและภาษีขายครบ (แบบเดียวกับ PO ที่ส่งทุกครั้งที่ซิงก์)
   if (bad.length && current===k){ const el = document.getElementById("err"); el.hidden = false;
     el.textContent = (bad.every(n=>IMG.includes(ext(n))) ? "รูปถ่ายให้อัปโหลดที่เมนู “อัปโหลดรูปถ่าย”: " : bad.some(n=>ext(n)==="doc") ? "ไฟล์ Word รุ่นเก่า (.doc) ยังอ่านไม่ได้ ให้บันทึกเป็น .docx หรือ PDF ก่อน: " : "ยังไม่รองรับไฟล์ประเภทนี้: ") + bad.join(", "); }
@@ -742,14 +778,44 @@ function bindWsUpload(k){
 }
 
 /* ===== การ์ดสรุปสำหรับส่ง LINE (ส่งด้วยมือ: รูปการ์ด / ข้อความ / Flex JSON) ===== */
-function cardData(k){
+/* ===== ยอดสรุปรายเดือน (record) — ใช้ทั้งบน Dashboard, การ์ด LINE และบันทึกลง Google Sheet =====
+   ยอดเงินในหน้าเว็บเก็บเป็นสตางค์ (จำนวนเต็ม) / ใน Sheet เก็บเป็นบาท */
+const pKey = p => p.y + "-" + pad2(p.m);
+const pLabel = key => { const [y,m] = key.split("-").map(Number); return MONTHS[m-1] + " " + y; };
+const prevKey = key => { let [y,m] = key.split("-").map(Number); m--; if (!m){ m = 12; y--; } return y + "-" + pad2(m); };
+function localChecks(k){
+  const {buy, sale} = W[k], t = taxSummary(k), h = hpCheck(k), items = [];
+  const add = (ok, label) => items.push({ok:!!ok, label});
+  if (t) add(!t.mismatch, t.mismatch ? "รายงานภาษีซื้อกับภาษีขายเป็นคนละเดือน" : "ภาษีซื้อและภาษีขายเป็นเดือนเดียวกัน");
+  const rs = [buy, sale].filter(Boolean);
+  if (rs.length){
+    const sumOk = rs.every(r=>r.sumMatches && !r.unbalanced);
+    add(sumOk, sumOk ? "ยอดตรงกับยอดท้ายรายงาน" : "ยอดบางส่วนไม่ตรงกับยอดท้ายรายงาน");
+    const out = rs.reduce((a,r)=>a+r.outOfPeriod,0);
+    add(!out, out ? `ใบกำกับนอกเดือนภาษี ${num(out)} ใบ` : "ใบกำกับอยู่ในเดือนภาษีทุกใบ");
+    const dg = rs.reduce((a,r)=>a+r.dup,0) + (sale ? sale.gaps : 0);
+    add(!dg, dg ? `พบเลขที่ซ้ำหรือขาดช่วง ${num(dg)} รายการ` : "ไม่พบเลขที่ซ้ำหรือขาดช่วง");
+  }
+  if (h) add(h.period && !h.bad, h.period && !h.bad ? "รายงานค่างวดตรงกับรายงานภาษีขาย" : "รายงานค่างวดไม่ตรงกับรายงานภาษีขาย");
+  return items;
+}
+function localRecord(k){
   const {buy, sale} = W[k], t = taxSummary(k);
   if (!t || t.mismatch) return null;
-  const n = problems(k), f = r => [bs(r.net.value), bs(r.net.vat), bs(r.net.total)];
-  return {name:WS[k].name, period:buy.period.label, buy:f(buy), sale:f(sale), pay:bs(t.amount), excess:t.excess ? bs(t.excess) : "",
-    ok:n===0, status: n===0 ? "✓ ตรวจแล้ว: ยอดภาษีซื้อและภาษีขายตรงกับรายงาน" : `พบ ${n} รายการที่ต้องตรวจ ดูรายละเอียดในระบบ`,
-    source:`ที่มา: รายงานภาษีซื้อ ${num(buy.count)} รายการ · รายงานภาษีขาย ${num(sale.count)} ใบ`};
+  const v = r => [r.net.value, r.net.vat, r.net.total];
+  return {area:k, areaName:WS[k].name, period:pKey(sale.period), label:sale.period.label,
+    buy:v(buy), sale:v(sale), pay:t.amount, excess:t.excess, buyCount:buy.count, saleCount:sale.count,
+    checks:localChecks(k), local:true};
 }
+function cardFromRecord(r){
+  if (!r) return null;
+  const n = r.checks.filter(c=>!c.ok).length, f = a => a.map(bs);
+  return {name:WS[r.area] ? WS[r.area].name : r.areaName, period:r.label || pLabel(r.period), buy:f(r.buy), sale:f(r.sale),
+    pay:bs(r.pay), excess:r.excess ? bs(r.excess) : "",
+    ok:n===0, status: n===0 ? "✓ ตรวจแล้ว: ยอดภาษีซื้อและภาษีขายตรงกับรายงาน" : `พบ ${n} รายการที่ต้องตรวจ ดูรายละเอียดในระบบ`,
+    source:`ที่มา: รายงานภาษีซื้อ ${num(r.buyCount)} รายการ · รายงานภาษีขาย ${num(r.saleCount)} ใบ`};
+}
+function cardData(k){ return cardFromRecord(localRecord(k)); }
 const ROW3 = ["มูลค่าสินค้าหรือบริการ","ภาษีมูลค่าเพิ่ม","รวม"];
 function cardText(d){
   const sec = (title, v) => `${title}\n` + ROW3.map((l,i)=>`  ${l}: ${v[i]}`).join("\n");
@@ -782,7 +848,7 @@ function cardFlex(d, title){
           contents:[T(d.status, {size:"xs", color: d.ok ? "#1E8E5A" : "#9A6700", weight:"bold", wrap:true})]},
         T(d.source, {size:"xxs", color:"#999999", wrap:true, margin:"lg"})]},
       footer:{type:"box", layout:"vertical", contents:[
-        {type:"button", style:"primary", color:"#0F2A47", height:"sm", action:{type:"uri", label:"เปิดดูบนเว็บ", uri:SITE_URL}}]}}};
+        {type:"button", style:"primary", color:"#0F2A47", height:"sm", action:{type:"uri", label:"เปิดดูบนเว็บ", uri:viewLink()}}]}}};
 }
 // วาดการ์ดลง canvas เพื่อบันทึก/คัดลอกเป็นรูป (กว้าง 300 หน่วย ขยาย 3 เท่าให้คมชัด)
 function drawCard(d){
@@ -877,8 +943,8 @@ async function cardAct(act){
    ส่ง 2 แบบพร้อมกันเสมอ: flex (การ์ด) + text (ข้อความธรรมดา) ถ้า LINE ไม่รับการ์ด Apps Script จะส่ง text แทน */
 const LINE_NOTIFY_KEY = "taxsys_line_notify_v1";
 function loadLineNotifySettings(){
-  try { const o = JSON.parse(localStorage.getItem(LINE_NOTIFY_KEY) || "{}"); return {enabled:!!o.enabled, url:String(o.url||"")}; }
-  catch(e){ return {enabled:false, url:""}; }
+  try { const o = JSON.parse(localStorage.getItem(LINE_NOTIFY_KEY) || "{}"); return {enabled:!!o.enabled, url:String(o.url||""), view:String(o.view||"")}; }
+  catch(e){ return {enabled:false, url:"", view:""}; }
 }
 function saveLineNotifySettings(st){ try { localStorage.setItem(LINE_NOTIFY_KEY, JSON.stringify(st)); return true; } catch(e){ return false; } }
 function isValidLineRelayUrl(u){ return /^https:\/\/script\.google(usercontent)?\.com\/.+/.test(u) && /[?&]key=[^&]+/.test(u); }
@@ -909,9 +975,13 @@ async function sendLineMessage(url, text, flex){
 function lineSave(){
   const url = document.getElementById("lineNotifyUrl").value.trim();
   const enabled = document.getElementById("lineNotifyEnabled").checked;
+  const view = document.getElementById("viewKey").value.trim();
   if (enabled && !isValidLineRelayUrl(url)) return setLineStatus("ลิงก์ไม่ถูกต้อง — ต้องขึ้นต้นด้วย https://script.google.com/ และมี ?key=... ต่อท้าย", "err");
-  if (!saveLineNotifySettings({enabled, url})) return setLineStatus("บันทึกไม่ได้ (เบราว์เซอร์บล็อกการเก็บข้อมูล)", "err");
+  let sendKey = ""; try { sendKey = new URL(url).searchParams.get("key") || ""; } catch(e){}
+  if (view && view === sendKey) return setLineStatus("รหัสดูข้อมูลต้องไม่ซ้ำกับรหัสส่ง", "err");
+  if (!saveLineNotifySettings({enabled, url, view})) return setLineStatus("บันทึกไม่ได้ (เบราว์เซอร์บล็อกการเก็บข้อมูล)", "err");
   setLineStatus(enabled ? "บันทึกแล้ว — จะแจ้งเตือนทุกครั้งที่อัปโหลดภาษีซื้อและภาษีขายครบ" : "บันทึกแล้ว (ปิดแจ้งเตือนอยู่)", "ok");
+  loadStore();   // โหลดยอดจาก Google Sheet ด้วยลิงก์ใหม่
 }
 async function lineTest(){
   const url = document.getElementById("lineNotifyUrl").value.trim();
@@ -956,10 +1026,103 @@ function dashAsk(k){ document.getElementById("dconf-"+k).hidden = false; documen
 function dashCancel(k){ document.getElementById("dconf-"+k).hidden = true; document.getElementById("dsend-"+k).hidden = false; }
 async function dashSendNow(k){
   dashCancel(k);
-  const d = cardData(k); if (!d) return;
+  const d = cardFromRecord(selRec(k)); if (!d) return;
   const btn = document.getElementById("dsend-"+k); btn.disabled = true;
   await sendCard(k, d);
   btn.disabled = false;
+}
+
+/* ===== Google Sheet: โหลด / บันทึกยอดสรุป ===== */
+const STORE = {};                    // area -> {period -> record} ที่โหลดจาก Sheet
+const LOAD = {state:"none", msg:"", sheetUrl:""};
+const SAVE_STATUS = {}, LAST_SAVED = {};
+const VIEW_CFG_KEY = "taxsys_view_v1";   // ค่าที่ได้จากลิงก์ "เปิดดูบนเว็บ" (src + view) สำหรับเครื่องผู้บริหาร
+function relay(){                    // จากลิงก์ในหน้าตั้งค่า: base + key
+  const st = loadLineNotifySettings();
+  if (!isValidLineRelayUrl(st.url)) return null;
+  try { const u = new URL(st.url); return {base:u.origin + u.pathname, key:u.searchParams.get("key") || ""}; } catch(e){ return null; }
+}
+function viewCfg(){ try { const o = JSON.parse(localStorage.getItem(VIEW_CFG_KEY) || "null"); return o && o.src && o.view ? o : null; } catch(e){ return null; } }
+function viewLink(){
+  const r = relay(), v = loadLineNotifySettings().view;
+  return r && v ? SITE_URL + "#src=" + encodeURIComponent(r.base) + "&view=" + encodeURIComponent(v) : SITE_URL;
+}
+// เปิดจากปุ่มในการ์ด LINE: จำ src + view ไว้ในเครื่องนี้ แล้วลบออกจากแถบที่อยู่
+(function readViewHash(){
+  const h = new URLSearchParams(location.hash.slice(1));
+  const src = h.get("src"), view = h.get("view");
+  if (src && view && /^https:\/\/script\.google\.com\//.test(src)){
+    try { localStorage.setItem(VIEW_CFG_KEY, JSON.stringify({src, view})); } catch(e){}
+    VIEW_ONCE = {src, view};
+    history.replaceState(null, "", location.pathname + location.search);
+  }
+})();
+var VIEW_ONCE;
+const toSat = a => a.map(x=>Math.round(Number(x)*100));
+function fromSheet(r){
+  return {area:r.area, areaName:r.areaName, period:String(r.period), label:r.label || pLabel(String(r.period)),
+    buy:toSat(r.buy), sale:toSat(r.sale), pay:Math.round(r.pay*100), excess:Math.round(r.excess*100),
+    buyCount:r.buyCount, saleCount:r.saleCount, checks:Array.isArray(r.checks) ? r.checks : [], savedAt:r.savedAt};
+}
+async function loadStore(){
+  const r = relay(), v = viewCfg() || VIEW_ONCE;
+  const url = r ? `${r.base}?action=list&key=${encodeURIComponent(r.key)}` : v ? `${v.src}?action=list&view=${encodeURIComponent(v.view)}` : null;
+  if (!url){ Object.assign(LOAD, {state:"none", msg:""}); return; }
+  Object.assign(LOAD, {state:"loading", msg:"กำลังโหลดยอดจาก Google Sheet…"}); refresh();
+  try {
+    const j = await (await fetch(url)).json();
+    if (!j.ok) throw new Error(j.error || "โหลดไม่ได้");
+    for (const k in STORE) delete STORE[k];
+    for (const rec of j.records || []){ const x = fromSheet(rec); (STORE[x.area] ||= {})[x.period] = x; }
+    Object.assign(LOAD, {state:"ok", msg:"", sheetUrl:j.sheetUrl || ""});
+  } catch(e){
+    Object.assign(LOAD, {state:"err", msg:"โหลดยอดจาก Google Sheet ไม่ได้: " + (e.message || "เชื่อมต่อไม่ได้")});
+  }
+  refresh();
+}
+function refresh(){
+  if (current==="dashboard") renderDashboard();
+  else if (current==="settings"){ const el = document.getElementById("sheetInfo"); if (el) el.innerHTML = sheetInfo(); }
+}
+function sheetInfo(){
+  if (!relay()) return "ยังไม่ได้ตั้งลิงก์ Apps Script";
+  if (LOAD.state==="loading") return "กำลังเชื่อมต่อ…";
+  if (LOAD.state==="err") return `<span style="color:var(--warn)">${esc(LOAD.msg)}</span>`;
+  const n = Object.values(STORE).reduce((a,o)=>a+Object.keys(o).length,0);
+  return `เชื่อมต่อแล้ว · มียอดสรุป ${n} เดือน` + (LOAD.sheetUrl ? ` · <a href="${esc(LOAD.sheetUrl)}" target="_blank" rel="noopener">เปิด Google Sheet</a>` : "");
+}
+// รวมยอดจาก Sheet กับยอดที่เพิ่งอัปโหลดในเครื่องนี้ (ของเครื่องนี้ทับเดือนเดียวกัน) เรียงจากเดือนล่าสุด
+const sameNums = (a,b) => a && b && ["buy","sale"].every(x=>a[x].join()===b[x].join()) && a.pay===b.pay;
+function records(k){
+  const out = Object.assign({}, STORE[k] || {}), loc = localRecord(k);
+  if (loc){ const st = out[loc.period]; out[loc.period] = Object.assign({}, loc, {savedAt: sameNums(st, loc) ? st.savedAt : null}); }
+  return Object.values(out).sort((a,b)=>b.period.localeCompare(a.period));
+}
+function setSave(k, msg, kind){
+  SAVE_STATUS[k] = {msg, kind};
+  const el = document.getElementById("wsSaveStatus"); if (el && current===k){ el.textContent = msg; el.style.color = kind==="err" ? "var(--warn)" : kind==="ok" ? "var(--ok)" : "var(--muted)"; }
+  if (current==="dashboard") renderDashboard();
+}
+const recSig = r => [r.period, r.buy.join(), r.sale.join(), r.pay, JSON.stringify(r.checks)].join("|");
+async function autoSave(k){
+  const r = relay(), rec = localRecord(k);
+  if (!r || !rec) return;
+  if (LAST_SAVED[k] === recSig(rec)) return;
+  LAST_SAVED[k] = recSig(rec);
+  setSave(k, "กำลังบันทึกยอดลง Google Sheet…");
+  const b = x => x/100;
+  const body = {action:"save", record:{area:rec.area, areaName:rec.areaName, period:rec.period, label:rec.label,
+    buy:rec.buy.map(b), sale:rec.sale.map(b), pay:b(rec.pay), excess:b(rec.excess), buyCount:rec.buyCount, saleCount:rec.saleCount, checks:rec.checks}};
+  try {
+    const res = await fetch(`${r.base}?key=${encodeURIComponent(r.key)}`, {method:"POST", headers:{"Content-Type":"text/plain;charset=utf-8"}, body:JSON.stringify(body)});
+    const j = await res.json();
+    if (!j.ok) throw new Error(j.error || "บันทึกไม่ได้");
+    (STORE[k] ||= {})[rec.period] = Object.assign({}, rec, {local:false, savedAt:j.savedAt});
+    setSave(k, `☁ บันทึกยอด ${rec.label} ลง Google Sheet แล้ว (${j.savedAt})`, "ok");
+  } catch(e){
+    LAST_SAVED[k] = null;
+    setSave(k, "บันทึกลง Google Sheet ไม่สำเร็จ: " + (e.message==="Failed to fetch" ? "เชื่อมต่อไม่ได้" : e.message) + " (อัปเดตโค้ด Apps Script เป็น V5 แล้วหรือยัง)", "err");
+  }
 }
 
 /* ===== เมนูอัปโหลดรูปถ่าย ===== */
@@ -1137,6 +1300,7 @@ function photoEntries(k){
 document.querySelectorAll(".nav-btn").forEach(b=>{ b.onclick = ()=>go(b.dataset.view); if (WS[b.dataset.view] && WS[b.dataset.view].hidden) b.hidden = true; });
 document.getElementById("menuToggle").onclick=()=>document.getElementById("sidebar").classList.toggle("open");
 go("dashboard");
+loadStore();
 </script>
 </body>
 </html>
