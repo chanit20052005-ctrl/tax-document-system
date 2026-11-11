@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>ระบบตรวจสอบและแปลงเอกสารภาษี — V25</title>
+<title>ระบบตรวจสอบและแปลงเอกสารภาษี — V26</title>
 <style>
 :root{
   --bg:#0f1318; --panel:#171c23; --panel2:#1e252e; --line:#2b3440;
@@ -144,6 +144,21 @@ details .frow{margin:12px 0 4px}
 .dash-btns{display:flex;gap:8px;flex-wrap:wrap}
 .card-title{font-size:17px;font-weight:700;margin:0 0 6px}
 .nav-settings{margin-top:auto}
+.nav-btn[hidden]{display:none}
+.dash-head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:18px}
+.dash-head h1{margin:0}
+.kpi.big{padding:18px 20px;border:1px solid var(--line)}
+.kpi.big span{font-size:14px}
+.kpi.big b{font-size:30px;margin:4px 0 2px}
+.kpi.big small{font-size:13px;color:var(--muted)}
+.kpi.big.result{border-color:var(--accent);background:#132131}
+.kpi.big.result b{color:#9ccbff}
+.kpis{margin-bottom:18px}
+.check-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px;font-size:15px}
+.check-list li.ok{color:var(--ok)} .check-list li.bad{color:var(--warn)}
+.dash-sep{border:0;border-top:1px solid var(--line);margin:30px 0}
+.grid2 .card{margin-bottom:18px}
+.sum-table td:first-child{white-space:nowrap}
 .line-check{display:flex;align-items:center;gap:8px;font-size:14px;margin-bottom:10px;cursor:pointer}
 .line-check input{width:18px;height:18px;accent-color:var(--accent)}
 .line-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:10px}
@@ -262,8 +277,8 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
 <script>
 /* ===== ตั้งค่า ===== */
 const WS = {
-  vat2005:     {name:"Vat 2005"},
-  vatbandung:  {name:"Vat บ้านดุง"},
+  vat2005:     {name:"Vat 2005", hidden:true},      // ซ่อนไว้ก่อน (เปิดกลับได้โดยลบ hidden:true)
+  vatbandung:  {name:"Vat บ้านดุง", hidden:true},
   chanleasing: {name:"Chan Leasing", taxId:"0475563000971"}   // ใช้เตือนเมื่อไฟล์เป็นของบริษัทอื่น
 };
 const W = {};                       // ข้อมูลของแต่ละพื้นที่ (เก็บในหน่วยความจำ)
@@ -519,30 +534,66 @@ function sumTable(k){
       ${t && t.excess ? `<tr class="excess"><td>ภาษีซื้อเกิน</td><td></td><td class="num">${bs(t.excess)}</td><td></td></tr>` : ""}
     </tbody></table></div>`;
 }
+function dashChecks(k){
+  const {buy, sale} = W[k], t = taxSummary(k), h = hpCheck(k), items = [];
+  const add = (ok, label) => items.push(`<li class="${ok?'ok':'bad'}">${ok?'✓':'⚠'} ${label}</li>`);
+  if (t) add(!t.mismatch, t.mismatch ? "รายงานภาษีซื้อกับภาษีขายเป็นคนละเดือน" : "ภาษีซื้อและภาษีขายเป็นเดือนเดียวกัน");
+  const rs = [buy, sale].filter(Boolean);
+  if (rs.length){
+    add(rs.every(r=>r.sumMatches && !r.unbalanced), rs.every(r=>r.sumMatches && !r.unbalanced) ? "ยอดตรงกับยอดท้ายรายงาน" : "ยอดบางส่วนไม่ตรงกับยอดท้ายรายงาน");
+    const out = rs.reduce((a,r)=>a+r.outOfPeriod,0);
+    add(!out, out ? `ใบกำกับนอกเดือนภาษี ${num(out)} ใบ` : "ใบกำกับอยู่ในเดือนภาษีทุกใบ");
+    const dg = rs.reduce((a,r)=>a+r.dup,0) + (sale ? sale.gaps : 0);
+    add(!dg, dg ? `พบเลขที่ซ้ำหรือขาดช่วง ${num(dg)} รายการ` : "ไม่พบเลขที่ซ้ำหรือขาดช่วง");
+  }
+  if (h) add(h.period && !h.bad, h.period && !h.bad ? "รายงานค่างวดตรงกับรายงานภาษีขาย" : "รายงานค่างวดไม่ตรงกับรายงานภาษีขาย");
+  return `<ul class="check-list">${items.join("")}</ul>`;
+}
+function dashLine(k){
+  const d = cardData(k);
+  if (!lineOn()) return `<p class="hint" style="margin:0 0 10px">ยังไม่ได้เปิดแจ้งเตือน LINE</p>
+    <button class="btn sm" onclick="go('settings')">ไปที่ตั้งค่า →</button>`;
+  if (!d) return `<p class="hint" style="margin:0">จะส่งการ์ดสรุปเข้า LINE อัตโนมัติเมื่ออัปโหลดภาษีซื้อและภาษีขายเดือนเดียวกันครบ</p>
+    <div class="hint" id="dstat-${k}" style="${lineStyle(k)}">${esc((LINE_STATUS[k]||{}).msg||"")}</div>`;
+  return `<div class="hint" id="dstat-${k}" style="${lineStyle(k)};margin:0 0 10px">${esc((LINE_STATUS[k]||{}).msg||"ยังไม่ได้ส่ง")}</div>
+    <button class="btn sm" id="dsend-${k}" onclick="dashAsk('${k}')">ส่งเข้า LINE อีกครั้ง</button>
+    <div class="send-confirm" id="dconf-${k}" hidden>
+      <span>ส่งการ์ดสรุปภาษี ${esc(WS[k].name)} ภาษีเดือน ${esc(d.period)} อีกครั้ง?</span>
+      <div><button class="btn primary sm" onclick="dashSendNow('${k}')">ยืนยันส่ง</button> <button class="btn sm" onclick="dashCancel('${k}')">ยกเลิก</button></div>
+    </div>`;
+}
+function dashSection(k){
+  const {buy, sale} = W[k], t = taxSummary(k), p = periodOf(k), complete = buy && sale;
+  const tile = (label, r, sub) => `<div class="kpi big"><span>${label}</span><b>${r ? bs(r.net.vat) : "—"}</b><small>${r ? sub : "ยังไม่ได้อัปโหลด"}</small></div>`;
+  const row = (label, r) => `<tr><td>${label}</td>${r
+    ? `<td class="num">${bs(r.net.value)}</td><td class="num">${bs(r.net.vat)}</td><td class="num">${bs(r.net.total)}</td>`
+    : `<td class="num wait" colspan="3">ยังไม่ได้อัปโหลด</td>`}</tr>`;
+  const head = `<div class="dash-head"><h1>Dashboard · ${WS[k].name}</h1>${p ? `<span class="chip info">ภาษีเดือน ${p.label}</span>` : ""}</div>`;
+  if (!hasData(k)) return `${head}<p class="sub">อัปโหลดรายงานภาษีซื้อและรายงานภาษีขายเพื่อเริ่มต้น</p>${wsUploadCard(k)}`;
+  return `${head}
+    <div class="kpis">
+      ${tile("ภาษีซื้อ", buy, buy ? num(buy.count)+" รายการ" : "")}
+      ${tile("ภาษีขาย", sale, sale ? num(sale.count)+" ใบ" : "")}
+      <div class="kpi big result"><span>ภาษีที่ต้องจ่าย ภ.พ.30</span><b>${t && !t.mismatch ? bs(t.amount) : "—"}</b>
+        <small>${t && t.mismatch ? "รายงานเป็นคนละเดือน" : t && t.excess ? "ภาษีซื้อเกิน " + bs(t.excess) : "ภาษีขาย − ภาษีซื้อ"}</small></div>
+    </div>
+    <div class="card">
+      <div class="card-head"><h2>รายละเอียด</h2><button class="btn sm" style="width:auto" onclick="go('${k}')">ดูรายละเอียดทั้งหมด →</button></div>
+      <div class="table-wrap"><table class="sum-table">
+        <thead><tr><th></th><th class="num">มูลค่าสินค้าหรือบริการ</th><th class="num">ภาษีมูลค่าเพิ่ม</th><th class="num">รวม</th></tr></thead>
+        <tbody>${row("ภาษีซื้อ", buy)}${row("ภาษีขาย", sale)}</tbody>
+      </table></div>
+    </div>
+    <div class="grid2">
+      <div class="card"><h2 style="margin-bottom:10px">สถานะการตรวจ</h2>${dashChecks(k)}</div>
+      <div class="card"><h2 style="margin-bottom:10px">แจ้งเตือน LINE</h2>${dashLine(k)}</div>
+    </div>
+    ${complete ? "" : wsUploadCard(k)}`;
+}
 function renderDashboard(){
-  const cards = Object.keys(WS).map(k=>{
-    if (!hasData(k)) return `<div class="card ws-card dash-empty"><h3>${WS[k].name}</h3><span class="empty-note">ยังไม่มีข้อมูล</span>
-      <button class="btn" style="width:auto" onclick="go('${k}')">ไปอัปโหลดไฟล์ →</button></div>`;
-    const p = periodOf(k), n = problems(k), t = taxSummary(k);
-    return `<div class="card ws-card">
-      <div class="card-head"><h3 style="margin:0">${WS[k].name}</h3><span class="chip info">ภาษีเดือน ${p.label}</span></div>
-      ${sumTable(k)}
-      <div class="dash-foot">
-        <div class="dash-inv">${t && t.mismatch ? '<span style="color:var(--warn)">รายงานภาษีซื้อกับภาษีขายเป็นคนละเดือน</span>'
-          : n ? `<span style="color:var(--warn)">พบ ${n} รายการที่ต้องตรวจ</span>`
-          : (W[k].buy && W[k].sale ? '<span style="color:var(--ok)">✓ ตรวจแล้ว ยอดตรงกับรายงาน</span>' : 'ยังอัปโหลดไม่ครบทั้งภาษีซื้อและภาษีขาย')}</div>
-        <div class="dash-btns">
-          ${lineOn() && cardData(k) ? `<button class="btn primary" style="width:auto" id="dsend-${k}" onclick="dashAsk('${k}')">ส่งเข้า LINE อีกครั้ง</button>` : ""}
-          <button class="btn" style="width:auto" onclick="go('${k}')">ดูรายละเอียด →</button>
-        </div>
-      </div>
-      <div class="send-confirm" id="dconf-${k}" hidden>
-        <span>ส่งการ์ดสรุปภาษี ${esc(WS[k].name)} อีกครั้ง ภาษีเดือน ${esc(p.label)} เข้า LINE?</span>
-        <div><button class="btn primary sm" onclick="dashSendNow('${k}')">ยืนยันส่ง</button> <button class="btn sm" onclick="dashCancel('${k}')">ยกเลิก</button></div>
-      </div>
-      <div class="hint" id="dstat-${k}" style="${lineStyle(k)}">${esc((LINE_STATUS[k]||{}).msg||"")}</div></div>`;
-  }).join("");
-  $view.innerHTML = `<h1>Dashboard</h1><p class="sub">ภาพรวมแยกตามพื้นที่ทำงาน</p>${cards}`;
+  const keys = Object.keys(WS).filter(k=>!WS[k].hidden);
+  $view.innerHTML = keys.map(dashSection).join('<hr class="dash-sep">');
+  if (keys.length===1) bindWsUpload(keys[0]);
 }
 
 /* ===== ตั้งค่า ===== */
@@ -587,7 +638,7 @@ async function addWsFiles(k, list){
     if (!reader){ bad.push(file.name); continue; }
     const f = {id:++fileSeq, name:file.name, size:file.size, status:"reading"};
     W[k].files.push(f);
-    if (current===k) renderWorkspace(k);
+    if (current===k) renderWorkspace(k); else if (current==="dashboard") renderDashboard();
     try {
       const pages = await reader(file, (n,total)=>{ const el = document.getElementById("prog-"+f.id); if (el) el.textContent = `กำลังอ่าน… หน้า ${n}/${total}`; });
       const r = parseReport(pages, file);
@@ -599,7 +650,7 @@ async function addWsFiles(k, list){
     } catch(e){
       Object.assign(f, {status:"error", msg: e && /^(ไม่|ยัง)/.test(e.message||"") ? e.message : "อ่านไฟล์ไม่ได้"});
     }
-    if (current===k) renderWorkspace(k);
+    if (current===k) renderWorkspace(k); else if (current==="dashboard") renderDashboard();
   }
   autoLine(k);   // ส่งการ์ดเข้า LINE อัตโนมัติเมื่อมีภาษีซื้อและภาษีขายครบ (แบบเดียวกับ PO ที่ส่งทุกครั้งที่ซิงก์)
   if (bad.length && current===k){ const el = document.getElementById("err"); el.hidden = false;
@@ -679,7 +730,11 @@ function renderWorkspace(k){
     ${buy || sale ? checksCard(k) : ""}
     ${lineCard(k)}`;
   bindLineCard();
-  const dz = document.getElementById("drop"), input = dz.querySelector("input");
+  bindWsUpload(k);
+}
+function bindWsUpload(k){
+  const dz = document.getElementById("drop"); if (!dz) return;
+  const input = dz.querySelector("input");
   input.onchange = () => addWsFiles(k, [...input.files]);
   dz.ondragover = e => { e.preventDefault(); dz.classList.add("over"); };
   dz.ondragleave = () => dz.classList.remove("over");
@@ -1079,7 +1134,7 @@ function photoEntries(k){
 
 
 
-document.querySelectorAll(".nav-btn").forEach(b=>b.onclick=()=>go(b.dataset.view));
+document.querySelectorAll(".nav-btn").forEach(b=>{ b.onclick = ()=>go(b.dataset.view); if (WS[b.dataset.view] && WS[b.dataset.view].hidden) b.hidden = true; });
 document.getElementById("menuToggle").onclick=()=>document.getElementById("sidebar").classList.toggle("open");
 go("dashboard");
 </script>
