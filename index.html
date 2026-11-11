@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>ระบบตรวจสอบและแปลงเอกสารภาษี — V28</title>
+<title>ระบบตรวจสอบและแปลงเอกสารภาษี — V29</title>
 <style>
 :root{
   --bg:#0f1318; --panel:#171c23; --panel2:#1e252e; --line:#2b3440;
@@ -643,7 +643,10 @@ function renderSettings(){
       <div class="hint" id="sheetInfo" style="margin:0 0 12px">${sheetInfo()}</div>
       <label class="fl">รหัสดูข้อมูล (VIEW_KEY ใน Apps Script) — ใส่ไว้ในปุ่ม “เปิดดูบนเว็บ” ของการ์ด LINE ให้ผู้บริหารเปิดดูยอดได้</label>
       <input class="fin" id="viewKey" type="password" value="${esc(st.view)}" style="max-width:320px">
-      <p class="hint" style="margin:8px 0 0">กดปุ่ม “บันทึก” ในกล่องแจ้งเตือน LINE ด้านบนเพื่อบันทึกค่านี้</p>
+      <div class="line-row">
+        <button class="btn primary sm" id="viewSaveBtn" onclick="viewSave()">บันทึก</button>
+        <span class="hint" id="viewStatus" style="margin:0"></span>
+      </div>
     </div>`;
 }
 
@@ -975,13 +978,20 @@ async function sendLineMessage(url, text, flex){
 function lineSave(){
   const url = document.getElementById("lineNotifyUrl").value.trim();
   const enabled = document.getElementById("lineNotifyEnabled").checked;
-  const view = document.getElementById("viewKey").value.trim();
+  const view = loadLineNotifySettings().view;   // รหัสดูข้อมูลบันทึกแยกที่กล่อง Google Sheet
   if (enabled && !isValidLineRelayUrl(url)) return setLineStatus("ลิงก์ไม่ถูกต้อง — ต้องขึ้นต้นด้วย https://script.google.com/ และมี ?key=... ต่อท้าย", "err");
-  let sendKey = ""; try { sendKey = new URL(url).searchParams.get("key") || ""; } catch(e){}
-  if (view && view === sendKey) return setLineStatus("รหัสดูข้อมูลต้องไม่ซ้ำกับรหัสส่ง", "err");
   if (!saveLineNotifySettings({enabled, url, view})) return setLineStatus("บันทึกไม่ได้ (เบราว์เซอร์บล็อกการเก็บข้อมูล)", "err");
   setLineStatus(enabled ? "บันทึกแล้ว — จะแจ้งเตือนทุกครั้งที่อัปโหลดภาษีซื้อและภาษีขายครบ" : "บันทึกแล้ว (ปิดแจ้งเตือนอยู่)", "ok");
   loadStore();   // โหลดยอดจาก Google Sheet ด้วยลิงก์ใหม่
+}
+function viewSave(){
+  const el = document.getElementById("viewStatus");
+  const say = (t, bad) => { el.textContent = t; el.style.color = bad ? "var(--warn)" : "var(--ok)"; };
+  const view = document.getElementById("viewKey").value.trim();
+  const st = loadLineNotifySettings(), r = relay();
+  if (view && r && view === r.key) return say("รหัสดูข้อมูลต้องไม่ซ้ำกับรหัสส่ง", true);
+  if (!saveLineNotifySettings(Object.assign(st, {view}))) return say("บันทึกไม่ได้ (เบราว์เซอร์บล็อกการเก็บข้อมูล)", true);
+  say(view ? "บันทึกแล้ว — การ์ด LINE ที่ส่งหลังจากนี้จะมีปุ่มเปิดดูยอดบนเว็บ" : "บันทึกแล้ว (ไม่มีรหัสดูข้อมูล ปุ่มในการ์ดจะเปิดเว็บเฉยๆ)");
 }
 async function lineTest(){
   const url = document.getElementById("lineNotifyUrl").value.trim();
