@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>ระบบตรวจสอบและแปลงเอกสารภาษี — V33</title>
+<title>ระบบตรวจสอบและแปลงเอกสารภาษี — V34</title>
 <style>
 :root{
   --bg:#0f1318; --panel:#171c23; --panel2:#1e252e; --line:#2b3440;
@@ -300,6 +300,7 @@ tr.net td,.sum-table tr.pay td,.sum-table tr.excess td{background:#EAF1FA}
 .ph-modal-in img{max-width:100%;display:block;border-radius:8px}
 @media (max-width:980px){.ph-grid{grid-template-columns:1fr}}
 @media (max-width:760px){.ph-cam{display:inline-flex;flex:1 1 100%}.ph-tips{grid-template-columns:1fr}.ph-3{grid-template-columns:1fr}.ph-2{grid-template-columns:1fr}}
+.spin.sm{display:inline-block;width:12px;height:12px;border-width:2px;vertical-align:-1px;margin-right:4px}
 </style>
 </head>
 <body>
@@ -705,7 +706,7 @@ function monthPicker(k, recs, rec){
 function renderViewWorkspace(k){
   const recs = records(k), rec = selRec(k);
   if (rec) SEL[k] = rec.period;
-  const load = LOAD.state==="loading" ? `<p class="hint">${esc(LOAD.msg)}</p>` : LOAD.state==="err" ? `<p class="hint" style="color:var(--warn)">${esc(LOAD.msg)}</p>` : "";
+  const load = LOAD.state==="loading" ? `<p class="hint"><span class="spin sm"></span> ${esc(LOAD.msg)}</p>` : LOAD.state==="err" ? `<p class="hint" style="color:var(--warn)">${esc(LOAD.msg)} · <a href="#" onclick="loadStore();return false">ลองใหม่</a></p>` : "";
   if (!rec){ $view.innerHTML = `<div class="dash-head"><h1>${WS[k].name}</h1></div>${load}<div class="card dash-empty-state"><b>ยังไม่มีข้อมูล</b></div>`; return; }
   const box = (title, a, sub) => `<div class="card">
       <div class="card-head"><div><h2>${title}</h2><p>${sub}</p></div></div>
@@ -732,7 +733,7 @@ function renderViewWorkspace(k){
 function dashSection(k){
   const recs = records(k), rec = selRec(k);
   if (rec) SEL[k] = rec.period;
-  const load = LOAD.state==="loading" ? `<p class="hint">${esc(LOAD.msg)}</p>` : LOAD.state==="err" ? `<p class="hint" style="color:var(--warn)">${esc(LOAD.msg)}</p>` : "";
+  const load = LOAD.state==="loading" ? `<p class="hint"><span class="spin sm"></span> ${esc(LOAD.msg)}</p>` : LOAD.state==="err" ? `<p class="hint" style="color:var(--warn)">${esc(LOAD.msg)} · <a href="#" onclick="loadStore();return false">ลองใหม่</a></p>` : "";
   const partial = hasData(k) && !localRecord(k) ? `<p class="hint">อัปโหลดในเครื่องนี้ยังไม่ครบ · <a href="#" onclick="go('${k}');return false">ไปอัปโหลดไฟล์ที่ ${WS[k].name} →</a></p>` : "";
   if (!rec) return `<div class="dash-head"><h1>Dashboard · ${WS[k].name}</h1></div>${load}${partial}
     <div class="card dash-empty-state">
@@ -1267,6 +1268,7 @@ async function loadStore(){
     Object.assign(LOAD, {state:"ok", msg:"", sheetUrl:j.sheetUrl || ""});
   } catch(e){
     Object.assign(LOAD, {state:"err", msg:"โหลดยอดจาก Google Sheet ไม่ได้: " + (e.message==="Failed to fetch" ? "เชื่อมต่อไม่ได้" : e.message || "เชื่อมต่อไม่ได้")});
+    console.warn("loadStore", e);
   }
   refresh();
 }
