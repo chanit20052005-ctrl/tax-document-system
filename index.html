@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>ระบบตรวจสอบและแปลงเอกสารภาษี — V37</title>
+<title>ระบบตรวจสอบและแปลงเอกสารภาษี — V39</title>
 <style>
 :root{
   --bg:#0f1318; --panel:#171c23; --panel2:#1e252e; --line:#2b3440;
@@ -303,6 +303,9 @@ tr.net td,.sum-table tr.pay td,.sum-table tr.excess td{background:#EAF1FA}
 .spin.sm{display:inline-block;width:12px;height:12px;border-width:2px;vertical-align:-1px;margin-right:4px}
 .trend{gap:8px}.trend .bar span{font-size:11px;white-space:nowrap}
 @media (max-width:760px){.trend .bar span{display:none}.trend .bar.cur span{display:block;position:relative}.trend .bar{font-size:11px}}
+.cancel-row td,.cancel-text,.cancel-title{color:#C62828 !important}
+.cancel-row td{background:rgba(198,40,40,.05)}
+.check-list li.cancel-li{background:#FDECEA;color:#C62828}
 </style>
 </head>
 <body>
@@ -539,7 +542,8 @@ function parseReport(pages, file){
       inHead = false;
       const at = text.indexOf(m[3]) + m[3].length;
       const cancel = m[7]==="Y" || /^\s*ยกเลิก/.test(text.slice(at));   // ใบกำกับที่ยกเลิก: ไม่นับยอด (ตามยอดสรุปท้ายรายงาน) แต่ยังแสดงจำนวน
-      rows.push({seq:+m[1], date:m[2], inv:m[3], n:[satang(m[4]),satang(m[5]),satang(m[6])], cancel});
+      const name = cancel ? text.slice(at, text.lastIndexOf(m[4])).replace(/^\s*ยกเลิก/,"").replace(/\b\d{5,}\b/g,"").replace(/\s+/g," ").trim() : "";
+      rows.push({seq:+m[1], date:m[2], inv:m[3], n:[satang(m[4]),satang(m[5]),satang(m[6])], cancel, name});
       continue;
     }
     if (pi===0 && inHead) head.push(cells);
@@ -617,12 +621,13 @@ function reportStats(rows, period){
   const sum = {value:0, vat:0, total:0}, cancelSum = {value:0, vat:0, total:0};
   const invMap = new Map(), days = new Set(), series = new Map();
   let unbalanced = 0, dup = 0, outOfPeriod = 0, cancelled = 0, firstDate = null, lastDate = null;
+  const cancelRows = [];
   const dkey = d => d.slice(6)+d.slice(3,5)+d.slice(0,2);
   for (const r of rows){
     const m = r.inv.match(/^(.*?)(\d{4})$/), pre = m ? m[1] : "";
     if (!series.has(pre)) series.set(pre, []);
     series.get(pre).push(m ? +m[2] : NaN);   // เลขที่ของใบยกเลิกยังนับว่าถูกใช้แล้ว (ไม่ใช่เลขขาดช่วง)
-    if (r.cancel){ cancelled++; cancelSum.value += r.value; cancelSum.vat += r.vat; cancelSum.total += r.total; continue; }
+    if (r.cancel){ cancelled++; cancelSum.value += r.value; cancelSum.vat += r.vat; cancelSum.total += r.total; cancelRows.push(r); continue; }
     sum.value += r.value; sum.vat += r.vat; sum.total += r.total;
     if (r.value + r.vat !== r.total) unbalanced++;
     if (invMap.has(r.inv)) dup++; else invMap.set(r.inv, r);
@@ -636,7 +641,7 @@ function reportStats(rows, period){
     return {pre, count:nums.length, first: ok ? pre+String(min).padStart(4,"0") : "", last: ok ? pre+String(max).padStart(4,"0") : "",
       gaps: ok ? (max-min+1) - uniq.size : 0};
   }).sort((a,b)=>b.count-a.count);
-  return {count:rows.length - cancelled, sum, invMap, series:ser, cancelled, cancelSum,
+  return {count:rows.length - cancelled, sum, invMap, series:ser, cancelled, cancelSum, cancelRows,
     unbalanced, dup, outOfPeriod, gaps: ser.reduce((a,s)=>a+s.gaps,0),
     days:days.size, daysInMonth:new Date(period.y-543, period.m, 0).getDate(), firstDate, lastDate};
 }
@@ -758,7 +763,23 @@ function renderViewWorkspace(k){
     ${box("ภาษีซื้อ", rec.buy, `รายงานภาษีซื้อ · ${num(rec.buyCount)} รายการ`)}
     ${box("ภาษีขาย", rec.sale, `รายงานภาษีขาย · ${num(rec.saleCount)} ใบ`)}
     <div class="card"><h2 style="margin-bottom:10px">ผลการตรวจ</h2>
-      <ul class="check-list">${rec.checks.map(c=>`<li class="${c.ok?'ok':'bad'}">${c.ok?'✓':'⚠'} ${esc(c.label)}</li>`).join("") || '<li>—</li>'}</ul></div>`;
+      <ul class="check-list">${rec.checks.map(c=>`<li class="${c.ok?'ok':'bad'}${/ยกเลิก/.test(c.label)?' cancel-li':''}">${c.ok?'✓':'⚠'} ${esc(c.label)}</li>`).join("") || '<li>—</li>'}</ul></div>
+    ${cancelCard(rec)}`;
+}
+// ใบกำกับที่ยกเลิกของเดือนที่เลือก (ไม่นับยอด)
+function cancelCard(rec){
+  const list = (rec && rec.cancels) || [];
+  if (!list.length) return "";
+  const s = k => list.reduce((a,x)=>a + Math.round(x[k]*100), 0);
+  return `<div class="card">
+    <div class="card-head"><div><h2 class="cancel-title">⚠ ใบกำกับที่ยกเลิก</h2><p>${num(list.length)} ใบ · ไม่นับรวมในยอดภาษี (ตามยอดสรุปท้ายรายงาน)</p></div></div>
+    <div class="table-wrap"><table>
+      <thead><tr><th>รายงาน</th><th>วัน/เดือน/ปี</th><th>เล่มที่/เลขที่</th><th>ชื่อผู้ซื้อ/ผู้ขาย</th><th class="num">มูลค่า</th><th class="num">ภาษีมูลค่าเพิ่ม</th><th class="num">รวม</th></tr></thead>
+      <tbody>${list.map(x=>`<tr class="cancel-row"><td>${TYPE[x.type] || ""}</td><td>${esc(x.date)}</td><td>${esc(x.inv)}</td><td>${esc(x.name || "—")}</td>
+        <td class="num">${baht(x.value)}</td><td class="num">${baht(x.vat)}</td><td class="num">${baht(x.total)}</td></tr>`).join("")}
+      <tr class="net cancel-row"><td colspan="4">รวม ${num(list.length)} ใบ</td><td class="num">${bs(s("value"))}</td><td class="num">${bs(s("vat"))}</td><td class="num">${bs(s("total"))}</td></tr></tbody>
+    </table></div>
+  </div>`;
 }
 function dashSection(k){
   const recs = records(k), rec = selRec(k);
@@ -795,9 +816,10 @@ function dashSection(k){
     </div>
     <div class="${isAdmin() ? "grid2" : ""}">
       <div class="card"><h2 style="margin-bottom:10px">สถานะการตรวจ</h2>
-        <ul class="check-list">${rec.checks.map(c=>`<li class="${c.ok?'ok':'bad'}">${c.ok?'✓':'⚠'} ${esc(c.label)}</li>`).join("") || '<li>—</li>'}</ul></div>
+        <ul class="check-list">${rec.checks.map(c=>`<li class="${c.ok?'ok':'bad'}${/ยกเลิก/.test(c.label)?' cancel-li':''}">${c.ok?'✓':'⚠'} ${esc(c.label)}</li>`).join("") || '<li>—</li>'}</ul></div>
       ${isAdmin() ? `<div class="card"><h2 style="margin-bottom:10px">แจ้งเตือน LINE</h2>${dashLine(k, rec)}</div>` : ""}
-    </div>`;   /* เครื่องที่เปิดดูอย่างเดียว (ผู้บริหาร) ไม่แสดงส่วนส่ง LINE */
+    </div>
+    ${cancelCard(rec)}`;   /* เครื่องที่เปิดดูอย่างเดียว (ผู้บริหาร) ไม่แสดงส่วนส่ง LINE */
 }
 function renderDashboard(){
   const keys = Object.keys(WS).filter(k=>!WS[k].hidden);
@@ -1018,7 +1040,7 @@ function reportCard(r, heading){
     ? [["สรุปยอดรวม"+(r.type==="buy"?"ภาษีซื้อ":"ภาษีขาย"), r.S.gross], ["สรุปยอดรวมใบเพิ่มหนี้", r.S.debit], ["สรุปยอดรวมใบลดหนี้", r.S.credit], ["สรุปยอดรวมสุทธิ", r.S.net, true]].filter(l=>l[1])
     : [];
   return `<div class="card">
-    <div class="card-head"><div><h2>${heading}</h2><p>${esc(r.title)} · ${esc(r.fileName)} · ${num(r.count)} รายการ${r.cancelled ? ` · ยกเลิก ${num(r.cancelled)} ใบ (ไม่นับยอด)` : ""}${ext(r.fileName)==="pdf" ? " · "+r.pages+" หน้า" : ""}</p></div></div>
+    <div class="card-head"><div><h2>${heading}</h2><p>${esc(r.title)} · ${esc(r.fileName)} · ${num(r.count)} รายการ${r.cancelled ? ` · <span class="cancel-text">ยกเลิก ${num(r.cancelled)} ใบ (ไม่นับยอด)</span>` : ""}${ext(r.fileName)==="pdf" ? " · "+r.pages+" หน้า" : ""}</p></div></div>
     <div class="kpis" ${lines.length?"":'style="margin-bottom:0"'}>
       <div class="kpi"><span>มูลค่าสินค้าหรือบริการ</span><b>${bs(r.net.value)}</b></div>
       <div class="kpi vat"><span>ภาษีมูลค่าเพิ่ม</span><b>${bs(r.net.vat)}</b></div>
@@ -1118,13 +1140,16 @@ function localChecks(k){
   if (h) add(h.period && !h.bad, h.period && !h.bad ? "รายงานค่างวดตรงกับรายงานภาษีขาย" : "รายงานค่างวดไม่ตรงกับรายงานภาษีขาย");
   return items;
 }
+// ใบกำกับที่ยกเลิก (ไม่นับยอด) ของเดือนนั้น เก็บไว้กับยอดสรุปเพื่อแสดงบน Dashboard และการ์ด
+const cancelsOf = (...reps) => reps.filter(Boolean).flatMap(r=>(r.cancelRows||[]).map(x=>({type:r.type, date:x.date, inv:x.inv, name:x.name || "",
+  value:x.value/100, vat:x.vat/100, total:x.total/100})));
 function localRecord(k){
   const {buy, sale} = W[k], t = taxSummary(k);
   if (!t || t.mismatch) return null;
   const v = r => [r.net.value, r.net.vat, r.net.total];
   return {area:k, areaName:WS[k].name, period:pKey(sale.period), label:sale.period.label,
     buy:v(buy), sale:v(sale), pay:t.amount, excess:t.excess, buyCount:buy.count, saleCount:sale.count,
-    checks:localChecks(k), local:true};
+    checks:localChecks(k), cancels:cancelsOf(buy, sale), local:true};
 }
 function cardFromRecord(r){
   if (!r) return null;
@@ -1132,14 +1157,18 @@ function cardFromRecord(r){
   return {name:WS[r.area] ? WS[r.area].name : r.areaName, period:r.label || pLabel(r.period), buy:f(r.buy), sale:f(r.sale),
     pay:bs(r.pay), excess:r.excess ? bs(r.excess) : "",
     ok:n===0, status: n===0 ? "✓ ตรวจแล้ว: ยอดภาษีซื้อและภาษีขายตรงกับรายงาน" : `พบ ${n} รายการที่ต้องตรวจ ดูรายละเอียดในระบบ`,
-    source:`ที่มา: รายงานภาษีซื้อ ${num(r.buyCount)} รายการ · รายงานภาษีขาย ${num(r.saleCount)} ใบ`};
+    source:`ที่มา: รายงานภาษีซื้อ ${num(r.buyCount)} รายการ · รายงานภาษีขาย ${num(r.saleCount)} ใบ`,
+    cancelNote: (r.cancels||[]).length ? `มีใบกำกับยกเลิก ${num(r.cancels.length)} ใบ (ภาษี ${baht(r.cancels.reduce((a,x)=>a+x.vat,0))}) ไม่นับยอด` : "",
+    // รายการใบยกเลิก (แสดงบนการ์ดไม่เกิน 5 ใบ ที่เหลือบอกจำนวน)
+    cancelLines: ((r.cancels||[]).length ? ["เล่มที่/เลขที่ที่ยกเลิก:"] : []).concat((r.cancels||[]).slice(0, 5).map(x=>`• ${x.inv}  ${x.date}  ${baht(x.vat)}`))
+      .concat((r.cancels||[]).length > 5 ? [`และอีก ${num(r.cancels.length - 5)} ใบ ดูทั้งหมดบนเว็บ`] : [])};
 }
 function cardData(k){ return cardFromRecord(localRecord(k)); }
 const ROW3 = ["มูลค่าสินค้าหรือบริการ","ภาษีมูลค่าเพิ่ม","รวม"];
 function cardText(d){
   const sec = (title, v) => `${title}\n` + ROW3.map((l,i)=>`  ${l}: ${v[i]}`).join("\n");
   return [`สรุปภาษีมูลค่าเพิ่ม ${d.name}`, `ภาษีเดือน ${d.period}`, "", sec("ภาษีซื้อ", d.buy), "", sec("ภาษีขาย", d.sale), "",
-    `ภาษีที่ต้องจ่าย ภ.พ.30: ${d.pay} บาท`, "(ภาษีขาย − ภาษีซื้อ)", ...(d.excess ? [`ภาษีซื้อเกิน: ${d.excess}`] : []), "", d.status].join("\n");
+    `ภาษีที่ต้องจ่าย ภ.พ.30: ${d.pay} บาท`, "(ภาษีขาย − ภาษีซื้อ)", ...(d.excess ? [`ภาษีซื้อเกิน: ${d.excess}`] : []), "", d.status, ...(d.cancelNote ? [d.cancelNote, ...d.cancelLines.map(l=>"  " + l)] : [])].join("\n");
 }
 const SITE_URL = "https://chanit20052005-ctrl.github.io/tax-document-system/";
 function cardFlex(d, title){
@@ -1165,6 +1194,9 @@ function cardFlex(d, title){
           T("ภาษีซื้อเกิน", {size:"sm", color:"#555555", flex:6}), T(d.excess, {size:"sm", weight:"bold", color:"#111111", align:"end", flex:5})]}] : []),
         {type:"box", layout:"vertical", margin:"lg", backgroundColor: d.ok ? "#E8F7EF" : "#FFF4DB", cornerRadius:"8px", paddingAll:"10px",
           contents:[T(d.status, {size:"xs", color: d.ok ? "#1E8E5A" : "#9A6700", weight:"bold", wrap:true})]},
+        ...(d.cancelNote ? [{type:"box", layout:"vertical", margin:"md", backgroundColor:"#FDECEA", cornerRadius:"8px", paddingAll:"10px", contents:[
+          T("⚠ " + d.cancelNote, {size:"xs", color:"#C62828", weight:"bold", wrap:true}),
+          ...d.cancelLines.map(l=>T(l, {size:"xxs", color:"#C62828", wrap:true, margin:"xs"}))]}] : []),
         T(d.source, {size:"xxs", color:"#999999", wrap:true, margin:"lg"})]},
       footer:{type:"box", layout:"vertical", contents:[
         {type:"button", style:"primary", color:"#0F2A47", height:"sm", action:{type:"uri", label:"เปิดดูบนเว็บ", uri:viewLink()}}]}}};
@@ -1202,7 +1234,17 @@ function drawCard(d){
     font(13, true); const sl = wrap(d.status, CW-2*P-20), boxH = sl.length*13*1.45 + 20;
     if (!dry){ ctx.fillStyle = d.ok ? "#E8F7EF" : "#FFF4DB"; ctx.beginPath();
       if (ctx.roundRect) ctx.roundRect(P, y, CW-2*P, boxH, 8); else ctx.rect(P, y, CW-2*P, boxH); ctx.fill(); }
-    const yb = y; y += 10; text(d.status, 13, d.ok ? "#1E8E5A" : "#9A6700", {bold:true, x:P+10, maxW:CW-2*P-20}); y = yb + boxH + P;
+    const yb = y; y += 10; text(d.status, 13, d.ok ? "#1E8E5A" : "#9A6700", {bold:true, x:P+10, maxW:CW-2*P-20}); y = yb + boxH;
+    if (d.cancelNote){   // กล่องแดง: ใบกำกับที่ยกเลิก
+      const iw = CW-2*P-20; font(12, true); const h1 = wrap("⚠ " + d.cancelNote, iw).length*12*1.45; font(11, false);
+      const h2 = d.cancelLines.reduce((a,l)=>a + wrap(l, iw).length*11*1.45 + 2, 0), ch = h1 + h2 + 20;
+      y += 10;
+      if (!dry){ ctx.fillStyle = "#FDECEA"; ctx.beginPath(); if (ctx.roundRect) ctx.roundRect(P, y, CW-2*P, ch, 8); else ctx.rect(P, y, CW-2*P, ch); ctx.fill(); }
+      const yc = y; y += 10; text("⚠ " + d.cancelNote, 12, "#C62828", {bold:true, x:P+10, maxW:iw});
+      for (const l of d.cancelLines){ y += 2; text(l, 11, "#C62828", {x:P+10, maxW:iw}); }
+      y = yc + ch;
+    }
+    y += P;
     // ท้ายการ์ด
     font(11, false); const fl = wrap(d.source, CW-24), footH = fl.length*11*1.45 + 24;
     if (!dry){ ctx.fillStyle = "#F5F7FA"; ctx.fillRect(0, y, CW, footH); }
@@ -1347,7 +1389,7 @@ const toSat = a => a.map(x=>Math.round(Number(x)*100));
 function fromSheet(r){
   return {area:r.area, areaName:r.areaName, period:String(r.period), label:r.label || pLabel(String(r.period)),
     buy:toSat(r.buy), sale:toSat(r.sale), pay:Math.round(r.pay*100), excess:Math.round(r.excess*100),
-    buyCount:r.buyCount, saleCount:r.saleCount, checks:Array.isArray(r.checks) ? r.checks : [], savedAt:r.savedAt, savedBy:r.savedBy || ""};
+    buyCount:r.buyCount, saleCount:r.saleCount, checks:Array.isArray(r.checks) ? r.checks : [], cancels:Array.isArray(r.cancels) ? r.cancels : [], savedAt:r.savedAt, savedBy:r.savedBy || ""};
 }
 // จำยอดล่าสุดไว้ในเครื่อง เปิดครั้งต่อไปแสดงได้ทันที
 const CACHE_LS = "taxsys_cache_v1";
@@ -1403,7 +1445,7 @@ async function autoSave(k){
   setSave(k, "กำลังบันทึกยอด…");
   const b = x => x/100;
   const record = {area:rec.area, areaName:rec.areaName, period:rec.period, label:rec.label,
-    buy:rec.buy.map(b), sale:rec.sale.map(b), pay:b(rec.pay), excess:b(rec.excess), buyCount:rec.buyCount, saleCount:rec.saleCount, checks:rec.checks};
+    buy:rec.buy.map(b), sale:rec.sale.map(b), pay:b(rec.pay), excess:b(rec.excess), buyCount:rec.buyCount, saleCount:rec.saleCount, checks:rec.checks, cancels:rec.cancels || []};
   const savedAt = stampBE(), savedBy = AUTH.name || AUTH.email;
   try {
     await pubRef(AUTH.viewKey).collection("records").doc(rec.area + "_" + rec.period).set(Object.assign({}, record, {savedAt, savedBy, ts:FS_TS()}));
@@ -1435,7 +1477,7 @@ function multiRecord(k, buy, sale){
   const cx = (buy.cancelled||0) + (sale.cancelled||0);
   if (cx) add(true, `ใบกำกับที่ยกเลิก ${num(cx)} ใบ ไม่นับยอด`);
   return {area:k, areaName:WS[k].name, period:pKey(sale.period), label:sale.period.label,
-    buy:v(buy), sale:v(sale), pay:Math.max(0, diff), excess:Math.max(0, -diff), buyCount:buy.count, saleCount:sale.count, checks};
+    buy:v(buy), sale:v(sale), pay:Math.max(0, diff), excess:Math.max(0, -diff), buyCount:buy.count, saleCount:sale.count, checks, cancels:cancelsOf(buy, sale)};
 }
 async function saveMulti(k){
   const m = W[k].multi; if (!m || !m.buy || !m.sale) return;
@@ -1465,7 +1507,7 @@ async function saveMulti(k){
 function multiCard(k){
   const m = W[k].multi; if (!m || (!m.buy && !m.sale)) return "";
   const rows = multiMonths(k), st = MULTI[k] || {};
-  const files = ["buy","sale"].map(t=>m[t] ? `${TYPE[t]}: ${esc(m[t].fileName)} · ${num(m[t].count)} รายการ${m[t].cancelled ? ` · ยกเลิก ${num(m[t].cancelled)} ใบ` : ""}` : `${TYPE[t]}: ยังไม่ได้อัปโหลดไฟล์รวม`).join("<br>");
+  const files = ["buy","sale"].map(t=>m[t] ? `${TYPE[t]}: ${esc(m[t].fileName)} · ${num(m[t].count)} รายการ${m[t].cancelled ? ` · <span class="cancel-text">ยกเลิก ${num(m[t].cancelled)} ใบ (${m[t].cancelRows.map(x=>esc(x.inv)).slice(0,5).join(", ")}${m[t].cancelled > 5 ? " …" : ""})</span>` : ""}` : `${TYPE[t]}: ยังไม่ได้อัปโหลดไฟล์รวม`).join("<br>");
   const total = t => m[t] ? `<span class="chip ${m[t].sumMatches ? "ok" : "warn"}">${TYPE[t]} ${m[t].sumMatches ? "ยอดรวมทุกเดือนตรงกับยอดท้ายรายงาน" : "ยอดรวมไม่ตรงกับยอดท้ายรายงาน"}</span>` : "";
   return `<div class="card">
     <div class="card-head"><div><h2>นำเข้าหลายเดือน</h2><p>${files}</p></div></div>
