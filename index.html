@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>ระบบตรวจสอบและแปลงเอกสารภาษี — V32</title>
+<title>ระบบตรวจสอบและแปลงเอกสารภาษี — V33</title>
 <style>
 :root{
   --bg:#0f1318; --panel:#171c23; --panel2:#1e252e; --line:#2b3440;
@@ -258,6 +258,48 @@ tr.net td,.sum-table tr.pay td,.sum-table tr.excess td{background:#EAF1FA}
 .login-logo{color:var(--navy)}
 @media (max-width:760px){.sidebar.open{box-shadow:0 0 0 100vmax rgba(15,42,71,.45)}}
 .sum-table tbody td:nth-child(3){color:var(--accent);font-weight:700}
+/* ===== อ่านใบกำกับจากรูปถ่าย ===== */
+.ph-tips{list-style:none;margin:0 0 14px;padding:12px 14px;background:var(--accent-weak);border-radius:10px;display:grid;grid-template-columns:repeat(2,1fr);gap:4px 18px;font-size:14px;color:#174E92}
+.ph-pick{display:flex;gap:12px;align-items:stretch;flex-wrap:wrap}
+.ph-cam{width:auto;display:none;align-items:center;justify-content:center;padding:14px 22px;font-size:17px}
+.ph-drop{flex:1;min-width:220px}
+.files li.sel{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+.ph-grid{display:grid;grid-template-columns:minmax(0,5fr) minmax(0,6fr);gap:22px;align-items:start}
+.ph-tools{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:10px}
+.ph-wrap{position:relative;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:#fff;user-select:none;-webkit-user-select:none}
+.ph-wrap img{display:block;width:100%;pointer-events:none}
+.ph-wrap.drawing{cursor:crosshair;touch-action:none;outline:3px solid var(--accent);outline-offset:-3px}
+.bx{position:absolute;border:3px solid #1A6FD1;border-radius:4px;background:rgba(26,111,209,.08);pointer-events:none}
+.bx span{position:absolute;bottom:100%;left:-3px;background:#1A6FD1;color:#fff;font-size:11px;line-height:1.5;padding:0 6px;border-radius:4px 4px 0 0;white-space:nowrap}
+.bx-items{border-color:#7B3FC4;background:rgba(123,63,196,.07)}.bx-items span{background:#7B3FC4}
+.bx-seller{border-color:#0F8A7E;background:rgba(15,138,126,.07)}.bx-seller span{background:#0F8A7E}
+.bx-doc{border-color:#C26A00;background:rgba(194,106,0,.07)}.bx-doc span{background:#C26A00}
+.bx-new{border-style:dashed}
+.tb-items:not(.primary){border-color:#7B3FC4}.tb-seller:not(.primary){border-color:#0F8A7E}.tb-doc:not(.primary){border-color:#C26A00}.tb-totals:not(.primary){border-color:#1A6FD1}
+.ph-form{border:0;margin:0;padding:0;min-width:0}
+.ph-form h3{font-size:15px;color:var(--navy);margin:14px 0 6px}
+.ph-form h3:first-child{margin-top:0}
+.ph-f{display:flex;flex-direction:column;gap:3px;font-size:13px;color:var(--muted);margin-bottom:8px;min-width:0}
+.ph-f .fin{font-size:15px;color:var(--text)}
+.ph-f .fin.num{text-align:right;font-variant-numeric:tabular-nums}
+.ph-f .fin.vat{color:var(--accent);font-weight:700}
+.ph-f .chip{font-size:11px;padding:0 6px}
+.ph-2{display:grid;grid-template-columns:1fr 1fr;gap:0 10px}
+.ph-3{display:grid;grid-template-columns:repeat(3,1fr);gap:0 10px}
+.ph-buyer{font-size:14px;margin:2px 0 4px;padding:6px 10px;border-radius:8px}
+.ph-buyer.ok{background:#E8F7EF;color:var(--ok)}.ph-buyer.bad{background:#FFF4DB;color:var(--warn)}
+.ph-q{margin-bottom:14px}
+.ph-reading{display:flex;align-items:center;gap:10px;background:var(--accent-weak);color:#174E92;border-radius:10px;padding:10px 14px;margin-bottom:12px;font-size:14px}
+.spin{width:18px;height:18px;border:3px solid #A9C4E4;border-top-color:var(--navy);border-radius:50%;animation:spin .8s linear infinite;flex-shrink:0}
+@keyframes spin{to{transform:rotate(360deg)}}
+.inv-table td small{display:block;color:var(--muted);font-size:12px}
+.inv-table td.vat{color:var(--accent);font-weight:700}
+.ph-modal{position:fixed;inset:0;z-index:200;background:rgba(15,42,71,.7);display:flex;align-items:center;justify-content:center;padding:16px}
+.ph-modal[hidden]{display:none}
+.ph-modal-in{background:var(--panel);border-radius:12px;padding:12px;max-width:min(900px,100%);max-height:100%;overflow:auto;display:flex;flex-direction:column;gap:10px;align-items:flex-end}
+.ph-modal-in img{max-width:100%;display:block;border-radius:8px}
+@media (max-width:980px){.ph-grid{grid-template-columns:1fr}}
+@media (max-width:760px){.ph-cam{display:inline-flex;flex:1 1 100%}.ph-tips{grid-template-columns:1fr}.ph-3{grid-template-columns:1fr}.ph-2{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
@@ -373,7 +415,6 @@ const WS = {
 };
 const W = {};                       // ข้อมูลของแต่ละพื้นที่ (เก็บในหน่วยความจำ)
 for (const k in WS) W[k] = {files:[], buy:null, sale:null, hp:null};
-const FILES = {photo:[]};           // รูปถ่ายที่อัปโหลดในเมนูอัปโหลดรูปถ่าย
 const TYPE = {buy:"ภาษีซื้อ", sale:"ภาษีขาย", hp:"ภาษีขาย (ค่างวด)"};
 const MONTHS = ["มกราคม","กุมภาพันธ์","มีนาคม","เมษายน","พฤษภาคม","มิถุนายน","กรกฎาคม","สิงหาคม","กันยายน","ตุลาคม","พฤศจิกายน","ธันวาคม"];
 
@@ -1273,174 +1314,642 @@ async function autoSave(k){
   }
 }
 
-/* ===== เมนูอัปโหลดรูปถ่าย ===== */
-function uploadCard(k){   // ใช้กับเมนูรูปถ่ายเท่านั้น
+/* ---------- เมนูอัปโหลดรูปถ่าย: อ่านใบกำกับภาษีซื้อจากรูป (OCR ด้วย Tesseract.js ในเบราว์เซอร์) ---------- */
+const IMG = ["jpg","jpeg","png","webp"];
+let EDIT = null;                                   // (ของเดิม) go() รีเซ็ตค่านี้
+const OWN_TAX = WS.chanleasing.taxId;              // เลขผู้เสียภาษีของผู้ซื้อ (Chan Leasing)
+const TESS = "https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/";
+const TESS_CORE = "https://cdn.jsdelivr.net/npm/tesseract.js-core@5.1.1";
+const BOX = {totals:"ยอดรวม", items:"รายการ", seller:"ผู้ขาย", doc:"วันที่ / เลขที่"};
+const PH = {items:[], cur:-1, draw:null, inv:[], invState:"none", invMsg:"", month:null, seq:0};
+const curItem = () => PH.items[PH.cur] || null;
+
+/* ===== ตัวช่วยอ่านข้อความ ===== */
+const thFix = s => String(s||"").replace(/ํา/g,"ำ").replace(/\s+/g," ").trim();   // ํา → ำ
+const strip = s => thFix(s).replace(/[ัำ-ฺ็-๎]/g,"");      // ตัดสระบน/ล่าง/วรรณยุกต์ ไว้เทียบคำ (OCR มักอ่านพวกนี้ผิด)
+const MONEY_G = /\d{1,3}(?:[,.] ?\d{3})+[.,] ?\d{2}(?!\d)|\d+[.,]\d{2}(?!\d)/g;
+function moneyOf(s){ const d = s.replace(/[^\d]/g,""); return d.length < 3 ? null : parseInt(d,10); }   // → สตางค์
+const amountsIn = s => (thFix(s).match(MONEY_G) || []).map(moneyOf).filter(v=>v!=null);
+function taxOk(id){   // ตรวจหลักสุดท้ายของเลขประจำตัวผู้เสียภาษี 13 หลัก
+  if (!/^\d{13}$/.test(id)) return false;
+  let s = 0; for (let i=0;i<12;i++) s += +id[i]*(13-i);
+  return (11 - s%11) % 10 === +id[12];
+}
+const taxIdsIn = s => (thFix(s).replace(/(\d)[ \-](?=\d)/g,"$1").match(/(?<!\d)\d{13}(?!\d)/g) || []);
+function dateIn(s){
+  const m = thFix(s).match(/(?<!\d)(\d{1,2}) ?[\/.\-] ?(\d{1,2}) ?[\/.\-] ?(\d{4})(?!\d)/);
+  if (!m) return null;
+  const d = +m[1], mo = +m[2]; let y = +m[3];
+  if (d<1 || d>31 || mo<1 || mo>12) return null;
+  if (y < 2400) y += 543;                          // ค.ศ. → พ.ศ.
+  if (y < 2500 || y > 2700) return null;
+  return pad2(d) + "/" + pad2(mo) + "/" + y;
+}
+const periodOfDate = d => { const m = /^(\d\d)\/(\d\d)\/(\d{4})$/.exec(d||""); return m ? m[3] + "-" + m[2] : ""; };
+const fmtS = v => v==null ? "" : bs(v);
+const parseS = s => { const t = String(s||"").replace(/[,\s]/g,""); return /^\d+(\.\d{1,2})?$/.test(t) ? Math.round(parseFloat(t)*100) : null; };
+
+// ดึงข้อมูลใบกำกับจากข้อความทีละบรรทัด
+function fieldsFrom(lines){
+  const out = {}, L = [];
+  for (const l of lines){   // แยกคอลัมน์ที่อยู่บรรทัดเดียวกัน แต่ถ้าส่วนนั้นมีแค่ชื่อช่อง (เช่น "อ้างถึง") ให้ต่อกับส่วนถัดไป
+    const seg = String(l||"").split(/\s{3,}|\|/).map(thFix).filter(Boolean);
+    for (let i=0;i<seg.length;i++){
+      if (i+1 < seg.length && /^(อางถง|เลขท\S{0,6}|วนท|date|no\.?|ref\.?)\s*[:.]?$/i.test(strip(seg[i]))){ L.push(seg[i] + " " + seg[i+1]); i++; }
+      else L.push(seg[i]);
+    }
+  }
+  const ids = [];
+  L.forEach(l => taxIdsIn(l).forEach(id => ids.push(id)));
+  if (ids.includes(OWN_TAX)) out.buyerTax = OWN_TAX;
+  const sellerIds = ids.filter(id => id !== OWN_TAX);
+  if (sellerIds.length) out.sellerTax = sellerIds.find(taxOk) || sellerIds[0];
+  else if (!ids.includes(OWN_TAX) && ids.length) out.buyerTax = ids[0];
+  for (const l of L){
+    const st = strip(l);
+    if (!out.date && /วนท|date/i.test(st)){ const d = dateIn(l); if (d) out.date = d; }
+    if (!out.no && /เลขท/.test(st) && !/หม|ประจ/.test(st)){
+      const m = st.match(/เลขท\S*\s*(?:ใบ\S*\s*)?[:.]?\s*([A-Za-z0-9][A-Za-z0-9\-\/]{4,})/);
+      if (m && /\d/.test(m[1])) out.no = m[1];
+    }
+    if (!out.no){ const m = l.match(/\b(?:Invoice|Tax Invoice|Doc(?:ument)?)\s*No\.?\s*[:.]?\s*([A-Za-z0-9][A-Za-z0-9\-\/]{2,})/i); if (m && /\d/.test(m[1])) out.no = m[1]; }
+    if (!out.ref && /อางถง/.test(st)){ const m = st.match(/อางถง\s*[:.]?\s*(\S+)/); if (m) out.ref = m[1].replace(/^[^A-Za-z0-9]+/,""); }
+    if (!out.sellerName && /(บรษท|หางหนสวน|หจก|บจก)/.test(st) && !/ผซอ|ลกคา|ชาญ/.test(st)){
+      const m = l.match(/(บริษัท|บ\.|ห้างหุ้นส่วน|หจก\.?|บจก\.?).*/);
+      if (m){ let n = m[0]; const e = n.search(/จำกัด(\s*\(มหาชน\))?/); if (e >= 0) n = n.slice(0, e).trim() + " " + n.slice(e).match(/จำกัด(\s*\(มหาชน\))?/)[0]; out.sellerName = n.trim(); }
+    }
+    if (!out.branch && !/ผซอ|ลกคา|ชาญ/.test(st)){
+      if (/สนกงานใหญ|head office/i.test(st)) out.branch = "สำนักงานใหญ่";
+      else { const m = st.match(/สาขา(?:ท)?\s*[:.]?\s*(\d{5})/); if (m) out.branch = "สาขา " + m[1]; }
+    }
+  }
+  if (!out.date){ for (const l of L){ const d = dateIn(l); if (d){ out.date = d; break; } } }
+  return out;
+}
+// เลือก มูลค่า / VAT / รวม จากตัวเลขในกรอบยอดรวม: หาคู่ที่ VAT ≈ 7% และ มูลค่า + VAT = รวม
+function pickTotals(A){
+  let best = null;
+  for (let i=0;i<A.length;i++) for (let j=0;j<A.length;j++){
+    if (i===j || !A[i] || !A[j]) continue;
+    const v = A[i], t = A[j], diff = Math.abs(Math.round(v*0.07) - t);
+    if (diff > 2) continue;
+    const hasSum = A.includes(v + t);
+    const k = hasSum ? A.indexOf(v + t, j) >= 0 ? A.indexOf(v + t, j) : A.indexOf(v + t) : -1;
+    const sc = (hasSum ? 0 : 10) + diff + (j > i ? 0 : 1) + Math.abs(j - i)*0.01;
+    if (!best || sc < best.sc) best = {sc, value:v, vat:t, total: hasSum ? v + t : null, iv:i, it:j, is:k};
+  }
+  if (best) return {value:best.value, vat:best.vat, total:best.total, calc: best.total==null ? ["total"] : [], iv:best.iv, it:best.it, is:best.is};
+  const n = A.length;
+  if (n >= 3 && A[n-3] && A[n-2] && A[n-1]) return {value:A[n-3], vat:A[n-2], total:A[n-1], calc:[], iv:n-3, it:n-2, is:n-1};
+  return {value: n ? A[0] : null, vat: n > 1 ? A[1] : null, total:null, calc:[], iv:n ? 0 : -1, it:n > 1 ? 1 : -1, is:-1};
+}
+
+/* ===== Tesseract (โหลดจากอินเทอร์เน็ตครั้งแรกที่ใช้ แล้วเบราว์เซอร์จำไว้) ===== */
+let tessP = null;
+function loadScript(src){ return new Promise((res, rej)=>{ const s = document.createElement("script"); s.src = src; s.onload = res; s.onerror = ()=>rej(new Error("โหลดตัวอ่านตัวอักษรไม่ได้ — ตรวจการเชื่อมต่ออินเทอร์เน็ต")); document.head.appendChild(s); }); }
+function ocr(){
+  return tessP ||= (async()=>{
+    if (!window.Tesseract) await loadScript(TESS + "tesseract.min.js");
+    const opt = {workerPath: TESS + "worker.min.js", corePath: TESS_CORE};
+    const text = await Tesseract.createWorker(["tha","eng"], 1, opt);
+    await text.setParameters({tessedit_pageseg_mode:"4", preserve_interword_spaces:"1"});
+    const num = await Tesseract.createWorker("eng", 1, opt);
+    await num.setParameters({tessedit_char_whitelist:"0123456789.,", tessedit_pageseg_mode:"6"});
+    return {text, num};
+  })().catch(e=>{ tessP = null; throw e; });
+}
+
+/* ===== รูปภาพ ===== */
+async function openImage(file){
+  let src = null;
+  try { src = await createImageBitmap(file, {imageOrientation:"from-image"}); } catch(e){ src = null; }
+  if (!src) src = await new Promise((res, rej)=>{ const im = new Image(); im.onload = ()=>res(im); im.onerror = ()=>rej(new Error("เปิดรูปนี้ไม่ได้ — ให้ส่งเป็นไฟล์ JPG หรือ PNG")); im.src = URL.createObjectURL(file); });
+  const w0 = src.width, h0 = src.height, k = Math.min(1, 3200 / Math.max(w0, h0));
+  const c = document.createElement("canvas"); c.width = Math.round(w0*k); c.height = Math.round(h0*k);
+  c.getContext("2d").drawImage(src, 0, 0, c.width, c.height);
+  return {base:c, w0, h0};
+}
+function rotated(src, rad){
+  const W = src.width, H = src.height, c = Math.abs(Math.cos(rad)), s = Math.abs(Math.sin(rad));
+  const o = document.createElement("canvas"); o.width = Math.round(W*c + H*s); o.height = Math.round(W*s + H*c);
+  const g = o.getContext("2d"); g.fillStyle = "#fff"; g.fillRect(0, 0, o.width, o.height);
+  g.translate(o.width/2, o.height/2); g.rotate(rad); g.drawImage(src, -W/2, -H/2);
+  return o;
+}
+// แสดงรูปจากภาพที่ใช้อ่านจริง (หมุน/ตั้งตรงแล้ว) กรอบบนรูปจะได้ตรงตำแหน่ง
+async function showBase(it){
+  const blob = await new Promise(res=>it.base.toBlob(res, "image/jpeg", 0.88));
+  if (!blob) return;
+  if (it.url) URL.revokeObjectURL(it.url);
+  it.url = URL.createObjectURL(blob);
+}
+// ตัดบางส่วนของรูป ขยาย ทำเป็นขาวดำ และเพิ่มความคมชัด ก่อนส่งให้ตัวอ่าน
+function prep(it, r, scale, clean){
+  const W = it.base.width, H = it.base.height;
+  const sx = Math.max(0, r.x*W), sy = Math.max(0, r.y*H), sw = Math.min(W - sx, r.w*W), sh = Math.min(H - sy, r.h*H);
+  const c = document.createElement("canvas"); c.width = Math.max(8, Math.round(sw*scale)); c.height = Math.max(8, Math.round(sh*scale));
+  const g = c.getContext("2d"); g.imageSmoothingQuality = "high"; g.fillStyle = "#fff"; g.fillRect(0,0,c.width,c.height);
+  g.drawImage(it.base, sx, sy, sw, sh, 0, 0, c.width, c.height);
+  const d = g.getImageData(0, 0, c.width, c.height), p = d.data, hist = new Uint32Array(256);
+  for (let i=0;i<p.length;i+=4){ const v = (p[i]*299 + p[i+1]*587 + p[i+2]*114)/1000 | 0; p[i] = v; hist[v]++; }
+  const n = p.length/4; let lo = 0, hi = 255, a = 0;
+  for (let v=0; v<256; v++){ a += hist[v]; if (a > n*0.01){ lo = v; break; } }
+  a = 0; for (let v=255; v>=0; v--){ a += hist[v]; if (a > n*0.01){ hi = v; break; } }
+  const k = hi > lo ? 255/(hi - lo) : 1;
+  for (let i=0;i<p.length;i+=4){ const v = Math.max(0, Math.min(255, (p[i]-lo)*k)); p[i] = p[i+1] = p[i+2] = v; }
+  if (clean==="run") unlineRun(p, c.width, c.height); else if (clean) unline(p, c.width, c.height);
+  g.putImageData(d, 0, 0);
+  return c;
+}
+// ลบเส้นตาราง (เส้นทึบยาวแนวนอน/แนวตั้ง) ออกก่อนอ่านตัวเลข ไม่ให้ตัวอ่านสับสน
+function unlineRun(p, W, H){   // แบบง่าย: ลบช่วงสีเข้มที่ยาวต่อเนื่อง
+  const dark = i => p[i*4] < 140, kill = [];
+  const run = (len, at, n) => { let s = -1; for (let j=0;j<=n;j++){ const dk = j < n && dark(at(j)); if (dk && s < 0) s = j; if (!dk && s >= 0){ if (j - s >= len) for (let q=s;q<j;q++) kill.push(at(q)); s = -1; } } };
+  const L = Math.max(60, Math.round(Math.min(W, H)*0.12));
+  for (let y=0;y<H;y++) run(Math.max(L, Math.round(W*0.35)), x=>y*W + x, W);
+  for (let x=0;x<W;x++) run(L, y=>y*W + x, H);
+  for (const i of kill){ p[i*4] = p[i*4+1] = p[i*4+2] = 255; }
+}
+function unline(p, W, H){
+  // หาเส้นจากภาพขาว-ดำ (Otsu)
+  const hist = new Uint32Array(256); for (let i=0;i<p.length;i+=4) hist[p[i]]++;
+  const N = W*H; let sum = 0; for (let v=0; v<256; v++) sum += v*hist[v];
+  let sB = 0, wB = 0, best = 0, th = 128;
+  for (let v=0; v<256; v++){ wB += hist[v]; if (!wB) continue; const wF = N - wB; if (!wF) break; sB += v*hist[v];
+    const mB = sB/wB, mF = (sum - sB)/wF, bt = wB*wF*(mB - mF)*(mB - mF); if (bt > best){ best = bt; th = v; } }
+  const bin = new Uint8Array(N); for (let i=0;i<N;i++) bin[i] = p[i*4] <= th ? 1 : 0;
+  const kill = new Uint8Array(N);
+  const L = Math.max(60, Math.round(Math.min(W, H)*0.12));
+  const mark = (horiz, a, s, e) => { for (let q=s;q<e;q++) for (let d=-3; d<=3; d++){
+    const x = horiz ? q : a + d, y = horiz ? a + d : q; if (x>=0 && x<W && y>=0 && y<H) kill[y*W + x] = 1; } };
+  for (let y=0;y<H;y++){ let s = -1; for (let x=0;x<=W;x++){ const dk = x < W && bin[y*W + x]; if (dk && s < 0) s = x; if (!dk && s >= 0){ if (x - s >= Math.max(L, W*0.2)) mark(true, y, s, x); s = -1; } } }
+  for (let x=0;x<W;x++){ let s = -1; for (let y=0;y<=H;y++){ const dk = y < H && bin[y*W + x]; if (dk && s < 0) s = y; if (!dk && s >= 0){ if (y - s >= L) mark(false, x, s, y); s = -1; } } }
+  for (let i=0;i<N;i++) if (kill[i]) p[i*4] = p[i*4+1] = p[i*4+2] = 255;   // ลบเฉพาะเส้น ตัวอักษรคงสีเดิม
+}
+// ตรวจคุณภาพรูป: ขนาด / ความสว่าง / ความคม
+function quality(it){
+  const warn = [];
+  if (Math.max(it.w0, it.h0) < 1400) warn.push("รูปมีขนาดเล็ก (" + it.w0 + "×" + it.h0 + ") อาจเป็นรูปที่ถูกย่อ เช่นส่งผ่าน LINE หรือแคปหน้าจอ — ถ้าตัวเลขผิด ให้ใช้รูปต้นฉบับจากกล้อง");
+  const s = 700 / Math.max(it.base.width, it.base.height), w = Math.round(it.base.width*s), h = Math.round(it.base.height*s);
+  const c = document.createElement("canvas"); c.width = w; c.height = h; const g = c.getContext("2d"); g.drawImage(it.base, 0, 0, w, h);
+  const p = g.getImageData(0, 0, w, h).data, y = new Float32Array(w*h);
+  let sum = 0; for (let i=0;i<w*h;i++){ y[i] = (p[i*4]*299 + p[i*4+1]*587 + p[i*4+2]*114)/1000; sum += y[i]; }
+  const mean = sum/(w*h);
+  let lv = 0, ls = 0, cnt = 0;
+  for (let r=Math.round(h*.1); r<h*.9; r++) for (let q=Math.round(w*.1); q<w*.9; q++){
+    const i = r*w + q, L = 4*y[i] - y[i-1] - y[i+1] - y[i-w] - y[i+w]; ls += L; lv += L*L; cnt++;
+  }
+  const sharp = cnt ? lv/cnt - (ls/cnt)**2 : 0;
+  it.metrics = {mean: Math.round(mean), sharp: Math.round(sharp)};
+  if (mean < 110) warn.push("รูปมืดเกินไป — ถ่ายใหม่ในที่สว่าง ไม่มีเงาบังเอกสาร");
+  if (sharp < 60) warn.push("รูปไม่คมชัด (อาจเบลอหรือสั่น) — แตะจอให้กล้องโฟกัสก่อนกดถ่าย");
+  return warn;
+}
+
+/* ===== อ่านใบกำกับ ===== */
+function lineList(data, cw, ch){
+  const out = [];
+  for (const b of data.blocks || []) for (const pa of b.paragraphs || []) for (const ln of pa.lines || []){
+    const rb = q => ({x0:q.x0/cw, y0:q.y0/ch, x1:q.x1/cw, y1:q.y1/ch});
+    out.push({text: ln.text, bbox: rb(ln.bbox), words: (ln.words || []).map(w=>({text:w.text, bbox: rb(w.bbox)}))});
+  }
+  return out;
+}
+const union = bs_ => bs_.reduce((u,b)=>({x0:Math.min(u.x0,b.x0), y0:Math.min(u.y0,b.y0), x1:Math.max(u.x1,b.x1), y1:Math.max(u.y1,b.y1)}), {x0:1,y0:1,x1:0,y1:0});
+function toRect(b, px, py){ const x = Math.max(0, b.x0 - px), y = Math.max(0, b.y0 - py); return {x, y, w: Math.min(1, b.x1 + px) - x, h: Math.min(1, b.y1 + py) - y}; }
+const isMoney = t => { MONEY_G.lastIndex = 0; const m = thFix(t).match(MONEY_G); return !!m && m.join("").length >= thFix(t).replace(/[^\d.,]/g,"").length - 1; };
+// หากรอบยอดรวม / รายการ / ผู้ขาย / วันที่-เลขที่ จากผลอ่านทั้งหน้า
+function guessBoxes(lines){
+  const boxes = {};
+  const sl = lines.filter(l=>/(บรษท|หางหนสวน|หจก|บจก)/.test(strip(l.text)) && !/ผซอ|ลกคา|ชาญ/.test(strip(l.text)));
+  if (sl.length){
+    const i0 = lines.indexOf(sl[0]), grp = [sl[0].bbox];
+    for (let i=i0+1; i<Math.min(lines.length, i0+4); i++){ if (/ผซอ|ลกคา|ชาญ/.test(strip(lines[i].text))) break; grp.push(lines[i].bbox); if (taxIdsIn(lines[i].text).length) break; }
+    boxes.seller = toRect(union(grp), 0.01, 0.008);
+  }
+  const dw = [];
+  lines.forEach(l=>{ const st = strip(l.text);
+    if (/วนท|เลขท|อางถง|date|no\./i.test(st) && !/หม|ประจ|ผซอ/.test(st) && (dateIn(l.text) || /\d{4,}/.test(l.text))){
+      const k = l.words.findIndex(w=>/วนท|เลขท|อางถง|date|no/i.test(strip(w.text)));
+      dw.push(union((k >= 0 ? l.words.slice(k) : l.words).map(w=>w.bbox)));
+    }});
+  if (dw.length) boxes.doc = toRect(union(dw), 0.01, 0.006);
+  return boxes;
+}
+function setStatus(it, msg){ it.msg = msg; const el = document.getElementById("phMsg-" + it.id); if (el) el.textContent = msg; }
+async function readItem(it){
+  it.status = "reading"; rerenderPhoto();
+  try {
+    setStatus(it, "กำลังเตรียมตัวอ่านตัวอักษร (ครั้งแรกใช้เวลาสักครู่)…");
+    const w = await ocr();
+    setStatus(it, "กำลังอ่านทั้งหน้า…");
+    const sc = Math.max(1, Math.min(3, 2200 / it.base.width));
+    const full = prep(it, {x:0, y:0, w:1, h:1}, sc);
+    let r = await w.text.recognize(full, {rotateAuto:true}, {blocks:true, text:true});
+    const rad = r.data.rotateRadians || 0;
+    if (Math.abs(rad) >= 0.005){   // รูปเอียง: หมุนให้ตรงก่อน แล้วอ่านใหม่ (ตัวเลขในคอลัมน์จะได้อยู่แนวเดียวกัน)
+      setStatus(it, "รูปเอียง กำลังหมุนให้ตรงแล้วอ่านใหม่…");
+      it.base = rotated(it.base, rad); await showBase(it);
+      const f2 = prep(it, {x:0, y:0, w:1, h:1}, sc);
+      r = await w.text.recognize(f2, {}, {blocks:true, text:true});
+      it.lines = lineList(r.data, f2.width, f2.height);
+    } else it.lines = lineList(r.data, full.width, full.height);
+    Object.assign(it.f, fieldsFrom(it.lines.map(l=>l.text)));
+    const all = []; it.lines.forEach(l=>amountsIn(l.text).forEach(v=>all.push(v)));
+    const g = guessBoxes(it.lines);
+    for (const k in g) if (!it.boxes[k]) it.boxes[k] = g[k];
+    setStatus(it, "กำลังอ่านตัวเลข…");
+    await readColumn(it);
+    await fixTaxIds(it);
+    if (it.f.value==null && all.length) Object.assign(it.f, pickTotals(all));
+    if (it.f.value==null && it.itemAmts && it.itemAmts.length) it.f.value = it.itemAmts.reduce((a,b)=>a+b,0);
+    fillCalc(it);
+    if (!it.f.period) it.f.period = periodOfDate(it.f.date);
+    it.status = "ready"; it.msg = "";
+  } catch(e){
+    it.status = "err"; it.msg = e.message || "อ่านรูปไม่สำเร็จ";
+  }
+  rerenderPhoto();
+}
+// หาคอลัมน์จำนวนเงินจากผลอ่านทั้งหน้า แล้วอ่านทั้งคอลัมน์ด้วยตัวอ่านตัวเลข → แยกเป็นรายการ / มูลค่า / VAT / รวม
+const lastMoney = s => { const m = String(s).replace(/\s/g,"").match(/\d[\d,.]*\d/g); if (!m) return null; const t = m[m.length-1]; return t.replace(/\D/g,"").length >= 3 ? moneyOf(t) : null; };
+async function numLines(it, r, psm, mode){
+  const w = await ocr(), sc = Math.max(1, Math.min(4, 2700 / it.base.width)), c = prep(it, r, sc, mode);
+  await w.num.setParameters({tessedit_pageseg_mode: psm});
+  const res = await w.num.recognize(c, {}, {blocks:true, text:true});
+  const A = [];
+  for (const l of lineList(res.data, c.width, c.height)){
+    const v = lastMoney(l.text); if (v==null) continue;
+    A.push({v, b:{x0:r.x + l.bbox.x0*r.w, y0:r.y + l.bbox.y0*r.h, x1:r.x + l.bbox.x1*r.w, y1:r.y + l.bbox.y1*r.h}});
+  }
+  A.sort((a,b)=>a.b.y0 - b.b.y0);
+  return A;
+}
+const goodTotals = p => p.value!=null && p.total!=null && Math.abs(Math.round(p.value*0.07) - p.vat) <= 1;
+async function readColumn(it){
+  const regions = [];
+  const mws = [];
+  it.lines.forEach(l=>l.words.forEach(w=>{ if (isMoney(w.text) && (w.bbox.x0 + w.bbox.x1)/2 > 0.45) mws.push(w.bbox); }));
+  if (mws.length){
+    const cs = mws.map(b=>(b.x0 + b.x1)/2).sort((a,b)=>a-b), med = cs[cs.length >> 1];
+    const u = union(mws.filter(b=>Math.abs((b.x0 + b.x1)/2 - med) < 0.12));
+    regions.push(toRect({x0:u.x0, y0:u.y0, x1:u.x1, y1:Math.max(Math.min(1, u.y1 + 0.12), 0.95)}, 0.04, 0.01));   // ยอดรวมมักอยู่ท้ายตาราง
+  }
+  regions.push({x:0.55, y:0.25, w:0.44, h:0.72});   // สำรอง: ครึ่งขวาของหน้า
+  let best = null;
+  const tries = [];
+  for (const mode of [true, "run"]) for (const r of regions) for (const psm of ["6","11"]) tries.push([r, psm, mode]);
+  for (const [r, psm, mode] of tries){
+    if (best && best.ok) break;
+    const A = await numLines(it, r, psm, mode); if (!A.length) continue;
+    const p = pickTotals(A.map(a=>a.v));
+    const cand = {A, p, ok: goodTotals(p)};
+    if (!best || (cand.ok && !best.ok)) best = cand;
+  }
+  if (best && best.ok) {} else if (!best) return false;
+  const {A, p} = best, vals = A.map(a=>a.v);
+  if (p.value==null) return false;
+  Object.assign(it.f, {value:p.value, vat:p.vat, total:p.total}); it.calc = p.calc.slice();
+  const tb = [p.iv, p.it, p.is].filter(i=>i >= 0).map(i=>A[i].b);
+  if (tb.length) it.boxes.totals = toRect(union(tb), 0.02, 0.01);
+  // รายการ = ตัวเลขที่อยู่ก่อนยอดมูลค่าครั้งแรก และรวมกันได้เท่ากับมูลค่า
+  const first = vals.indexOf(p.value);
+  for (let s=0; s<first; s++){
+    if (vals.slice(s, first).reduce((x,y)=>x+y, 0) === p.value){
+      it.itemAmts = vals.slice(s, first); it.boxes.items = toRect(union(A.slice(s, first).map(a=>a.b)), 0.02, 0.01); break;
+    }
+  }
+  return true;
+}
+// เลขผู้เสียภาษีที่หลักสุดท้ายไม่ตรง: อ่านบรรทัดนั้นซ้ำด้วยตัวอ่านตัวเลข
+async function fixTaxIds(it){
+  const needSeller = !it.f.sellerTax || !taxOk(it.f.sellerTax), needBuyer = it.f.buyerTax !== OWN_TAX;
+  if (!needSeller && !needBuyer) return;
+  const cand = it.lines.filter(l=>/\d{9,}/.test(thFix(l.text).replace(/(\d)[ \-](?=\d)/g,"$1")) || /ประจ|tax/i.test(strip(l.text)));
+  const w = await ocr(), sc = Math.max(1, Math.min(4, 2700 / it.base.width));
+  for (const l of cand.slice(0, 6)){
+    const b = l.words.filter(x=>/\d/.test(x.text));
+    const r = toRect(b.length ? union(b.map(x=>x.bbox)) : l.bbox, 0.01, 0.006);
+    await w.num.setParameters({tessedit_pageseg_mode:"7"});
+    const t = (await w.num.recognize(prep(it, r, sc))).data.text;
+    for (const id of taxIdsIn(t.replace(/[.,]/g,""))){
+      if (id === OWN_TAX) it.f.buyerTax = OWN_TAX;
+      else if (taxOk(id) && (!it.f.sellerTax || !taxOk(it.f.sellerTax))) it.f.sellerTax = id;
+    }
+  }
+}
+// อ่านเฉพาะในกรอบ (ตัวเลขใช้ตัวอ่านเฉพาะตัวเลข แม่นกว่าอ่านทั้งหน้า)
+async function readBox(it, k, quiet){
+  const r = it.boxes[k]; if (!r) return;
+  const w = await ocr();
+  const sc = Math.max(1, Math.min(4, 2700 / it.base.width));
+  const c = prep(it, r, sc);
+  if (k==="totals" || k==="items"){
+    let A = (await numLines(it, r, "6", true)).map(a=>a.v);
+    if (k==="totals" && !goodTotals(pickTotals(A))){ const B = (await numLines(it, r, "11", true)).map(a=>a.v); if (goodTotals(pickTotals(B))) A = B; }
+    if (k==="items") it.itemAmts = A;
+    else { const p = pickTotals(A); it.f.value = p.value; it.f.vat = p.vat; it.f.total = p.total; it.calc = p.calc; }
+    if (k==="items" && it.f.value==null && A.length) it.f.value = A.reduce((a,b)=>a+b,0);
+  } else {
+    await w.text.setParameters({tessedit_pageseg_mode:"6"});
+    let t = ""; try { t = (await w.text.recognize(c)).data.text; } finally { await w.text.setParameters({tessedit_pageseg_mode:"4"}); }
+    const f = fieldsFrom(t.split(/\n/));
+    const keys = k==="seller" ? ["sellerName","sellerTax","branch"] : ["date","no","ref"];
+    keys.forEach(x=>{ if (f[x]) it.f[x] = f[x]; });
+    if (k==="doc" && f.date) it.f.period = periodOfDate(f.date);
+  }
+  if (!quiet){ fillCalc(it); }
+}
+// เติมช่องที่อ่านไม่ได้จากการคำนวณ (แสดงว่า "คำนวณ" ให้คนตรวจ)
+function fillCalc(it){
+  const f = it.f; it.calc = it.calc || [];
+  if (f.value!=null && f.vat!=null && f.total==null){ f.total = f.value + f.vat; it.calc.push("total"); }
+  else if (f.total!=null && f.vat!=null && (f.value==null || f.value + f.vat !== f.total) && Math.abs(Math.round((f.total - f.vat)*0.07) - f.vat) <= 1){
+    if (f.value !== f.total - f.vat){ f.value = f.total - f.vat; it.calc.push("value"); }
+  }
+  else if (f.value!=null && f.total!=null && f.vat==null){ f.vat = f.total - f.value; it.calc.push("vat"); }
+}
+
+/* ===== ตรวจข้อมูล ===== */
+function checksOf(it){
+  const f = it.f, out = [];
+  const add = (ok, label, hard) => out.push({ok, label, hard: !!hard});
+  const has = f.value!=null && f.vat!=null && f.total!=null;
+  if (!has) add(false, "กรอก มูลค่า / ภาษีมูลค่าเพิ่ม / รวม ให้ครบ", true);
+  else add(f.value + f.vat === f.total, f.value + f.vat === f.total ? "มูลค่า + VAT = รวม" : `มูลค่า + VAT = ${bs(f.value + f.vat)} ไม่เท่ากับรวม ${bs(f.total)}`, true);
+  if (f.value!=null && f.vat!=null){ const e = Math.round(f.value*0.07), ok = Math.abs(e - f.vat) <= 1;
+    add(ok, ok ? "VAT 7% ถูกต้อง" : `VAT ควรเป็น ${bs(e)} (7% ของมูลค่า) — ตรวจกับรูปอีกครั้ง`); }
+  if (it.itemAmts && it.itemAmts.length && f.value!=null){ const s = it.itemAmts.reduce((a,b)=>a+b,0);
+    add(s === f.value, s === f.value ? `รวม ${it.itemAmts.length} รายการ = ${bs(s)} ตรงกับมูลค่า` : `รวม ${it.itemAmts.length} รายการ = ${bs(s)} ไม่ตรงกับมูลค่า ${bs(f.value)}`); }
+  add(f.buyerTax === OWN_TAX, f.buyerTax === OWN_TAX ? "เลขผู้ซื้อเป็นของ Chan Leasing" : "ไม่พบเลขผู้เสียภาษีของ Chan Leasing ในใบนี้ — อาจเป็นใบของบริษัทอื่น");
+  if (f.sellerTax) add(taxOk(f.sellerTax), taxOk(f.sellerTax) ? "เลขผู้เสียภาษีผู้ขายถูกรูปแบบ" : "เลขผู้เสียภาษีผู้ขายไม่ถูกต้อง — ตรวจทีละหลักกับรูป");
+  else add(false, "ยังไม่มีเลขผู้เสียภาษีผู้ขาย");
+  if (!f.date) add(false, "กรอกวันที่ (วว/ดด/ปปปป)", true);
+  if (!f.no) add(false, "กรอกเลขที่ใบกำกับ", true);
+  if (!f.period) add(false, "เลือกเดือนภาษี", true);
+  const dup = f.no && PH.inv.find(x=>x.id !== it.savedId && x.no === f.no && x.sellerTax === (f.sellerTax||""));
+  if (dup) add(false, `ใบเลขที่ ${f.no} ของผู้ขายนี้บันทึกไปแล้ว (${pLabel(dup.period)})`, true);
+  return out;
+}
+function drawChecks(){
+  const it = curItem(); const el = document.getElementById("phChecks"); if (!it || !el) return;
+  const cs = checksOf(it), hard = cs.some(c=>!c.ok && c.hard);
+  el.innerHTML = cs.map(c=>`<li class="${c.ok ? "ok" : "bad"}">${c.ok ? "✓" : "⚠"} ${esc(c.label)}</li>`).join("");
+  const btn = document.getElementById("phSave"); if (btn) btn.disabled = hard || it.status==="saving";
+}
+
+/* ===== หน้าจอ ===== */
+const PH_TIPS = `<ul class="ph-tips">
+  <li>📄 ถ่ายให้เห็น<b>เต็มใบ</b> ตรงๆ ไม่เอียง</li><li>💡 ที่<b>สว่าง</b> ไม่มีเงามือ ไม่มีแสงสะท้อน</li>
+  <li>🔍 <b>ไม่เบลอ</b> — แตะจอให้กล้องโฟกัสก่อนกดถ่าย</li><li>🚫 ไม่ใช้รูปแคปหน้าจอหรือรูปที่ถูกย่อ</li></ul>`;
+function phUploadCard(){
+  const chip = it => it.status==="saved" ? '<span class="chip ok">บันทึกแล้ว</span>' : it.status==="reading" ? '<span class="chip info">กำลังอ่าน…</span>'
+    : it.status==="err" ? '<span class="chip warn">อ่านไม่สำเร็จ</span>' : '<span class="chip warn">รอตรวจ</span>';
   return `<div class="card">
-    <div class="card-head"><h2>เลือกรูปถ่าย</h2></div>
-    <label class="drop" id="drop"><input type="file" multiple accept=".jpg,.jpeg,.png">
-      <b>ลากรูปมาวาง หรือคลิกเพื่อเลือก</b><small>JPG · JPEG · PNG</small></label>
-    <div class="err" id="err" hidden></div>
-    <ul class="files">${FILES[k].map((f,i)=>`<li>
-      <span class="ext">${esc(ext(f.name))}</span><span class="nm" title="${esc(f.name)}">${esc(f.name)}</span>
-      <span class="chip ${f.entry?'ok':'warn'}">${f.entry?'กรอกยอดแล้ว':'รอกรอกยอด'}</span>
-      <button class="btn sm" onclick="openEntry('${k}',${i})">${f.entry?'แก้ไขยอด':'กรอกยอด'}</button>
-      <span class="sz">${size(f.size)}</span>
-      <button class="x" title="นำออก" onclick="removeFile('${k}',${i})">×</button></li>`).join("")}</ul>
+    <div class="card-head"><div><h2>อัปโหลดรูปใบกำกับภาษี</h2><p>ใบกำกับภาษีซื้อของ Chan Leasing ทีละใบ (ถ่ายหลายใบแล้วอัปโหลดพร้อมกันได้)</p></div></div>
+    ${PH_TIPS}
+    <div class="ph-pick">
+      <label class="btn primary ph-cam"><input type="file" accept="image/*" capture="environment" id="phCam" hidden>📷 ถ่ายรูป</label>
+      <label class="drop ph-drop" id="phDrop"><input type="file" accept="image/*" multiple id="phFile">
+        <b>เลือกรูป หรือลากรูปมาวาง</b><small>JPG · PNG</small></label>
+    </div>
+    <div class="err" id="phErr" hidden></div>
+    ${PH.items.length ? `<ul class="files">${PH.items.map((it,i)=>`<li class="${i===PH.cur ? "sel" : ""}">
+      <span class="ext">${esc(ext(it.name)||"img")}</span><span class="nm" title="${esc(it.name)}">${esc(it.name)}</span>
+      ${chip(it)}<button class="btn sm" onclick="phOpen(${i})">${i===PH.cur ? "กำลังดู" : "เปิด"}</button>
+      <button class="x" title="นำออก" onclick="phRemove(${i})">×</button></li>`).join("")}</ul>` : ""}
   </div>`;
 }
-function bindUpload(k){
-  const dz = document.getElementById("drop"), input = dz.querySelector("input");
-  const add = list => {
-    const bad = []; let firstImg = -1;
-    for (const f of list){
-      if (!IMG.includes(ext(f.name))){ bad.push(f.name); continue; }
-      if (firstImg<0) firstImg = FILES[k].length;
-      FILES[k].push({name:f.name, size:f.size, url:URL.createObjectURL(f)});
-    }
-    if (firstImg>=0 && !EDIT) EDIT = {k, i:firstImg};
-    rerender(k);
-    if (bad.length){ const e = document.getElementById("err"); e.hidden = false; e.textContent = "เมนูนี้รับเฉพาะรูป JPG / PNG: " + bad.join(", "); }
-  };
-  input.onchange = () => add(input.files);
-  dz.ondragover = e => { e.preventDefault(); dz.classList.add("over"); };
-  dz.ondragleave = () => dz.classList.remove("over");
-  dz.ondrop = e => { e.preventDefault(); dz.classList.remove("over"); add(e.dataTransfer.files); };
+function phField(key, label, opts){
+  opts = opts || {};
+  const it = curItem(), v = it.f[key];
+  const val = opts.money ? fmtS(v) : (v || "");
+  const calc = (it.calc || []).includes(key) ? ' <span class="chip info" title="ระบบคำนวณให้ ตรวจกับรูปอีกครั้ง">คำนวณ</span>' : "";
+  return `<label class="ph-f"><span>${label}${calc}</span><input class="fin${opts.money ? " num" : ""}${opts.vat ? " vat" : ""}" data-f="${key}" ${opts.money ? 'inputmode="decimal"' : ""} value="${esc(val)}" placeholder="${opts.ph || ""}"></label>`;
 }
-function renderPhoto(){
-  $view.innerHTML = `<h1>อัปโหลดรูปถ่าย</h1><p class="sub">อัปโหลดรูปถ่ายเอกสาร แล้วกรอกยอดเองโดยดูจากรูป</p>
-    ${uploadCard("photo")}${entryPanel("photo")}${photoEntries("photo")}`;
-  bindUpload("photo"); bindEntry();
+function monthOptions(sel){
+  const now = new Date(), y0 = now.getFullYear() + 543, opts = [];
+  for (let k=0; k<14; k++){ let m = now.getMonth() + 1 - k, y = y0; while (m < 1){ m += 12; y--; } opts.push(y + "-" + pad2(m)); }
+  if (sel && !opts.includes(sel)) opts.unshift(sel);
+  return `<option value="">— เลือก —</option>` + opts.map(p=>`<option value="${p}" ${p===sel ? "selected" : ""}>${pLabel(p)}</option>`).join("");
 }
-/* ---------- กรอกยอดจากรูปถ่าย ---------- */
-const IMG = ["jpg","jpeg","png"];
-const ROWS = [["sale","สรุปยอดรวมภาษีขาย"],["debit","สรุปยอดรวมใบเพิ่มหนี้"],["credit","สรุปยอดรวมใบลดหนี้"],["net","สรุปยอดรวมสุทธิ"]];
-const COLS = [["value","มูลค่าสินค้าหรือบริการ"],["vat","ภาษีมูลค่าเพิ่ม"],["total","รวม"]];
-const INV = [["dateFrom","วันที่เริ่ม","01/10/2569"],["dateTo","วันที่สิ้นสุด","31/10/2569"],["first","เลขที่ใบแรก",""],["last","เลขที่ใบสุดท้าย",""],["count","จำนวนใบ",""]];
-let EDIT = null;   // {k, i} รูปที่กำลังกรอก
-
-function openEntry(k,i){ EDIT = {k,i}; rerender(k); document.getElementById("entry").scrollIntoView({behavior:"smooth",block:"start"}); }
-function closeEntry(){ const k = EDIT.k; EDIT = null; rerender(k); }
-function removeFile(k,i){
-  const f = FILES[k][i]; if (f.url) URL.revokeObjectURL(f.url);
-  FILES[k].splice(i,1);
-  if (EDIT && EDIT.k===k) EDIT = EDIT.i===i ? null : {k, i: EDIT.i>i ? EDIT.i-1 : EDIT.i};
-  rerender(k);
-}
-const numStr = n => n==null ? "" : baht(n);
-
-function entryPanel(k){
-  if (!EDIT || EDIT.k!==k) return "";
-  const f = FILES[k][EDIT.i], e = f.entry || {rows:{}, inv:{}};
-  return `<div class="card" id="entry">
-    <div class="card-head"><div><h2>กรอกยอดจากรูปถ่าย</h2><p>${esc(f.name)}</p></div>
-      <button class="btn sm" onclick="closeEntry()">ปิด</button></div>
-    <div class="entry-grid">
+function phEditor(){
+  const it = curItem(); if (!it) return "";
+  const boxes = Object.entries(it.boxes).map(([k,r])=>`<div class="bx bx-${k}" style="left:${r.x*100}%;top:${r.y*100}%;width:${r.w*100}%;height:${r.h*100}%"><span>${BOX[k]}</span></div>`).join("");
+  const reading = it.status==="reading";
+  return `<div class="card" id="phEditor">
+    <div class="card-head"><div><h2>ตรวจข้อมูลใบกำกับ</h2><p>${esc(it.name)}</p></div>
+      ${it.status==="saved" ? '<span class="chip ok">บันทึกแล้ว — แก้ไขแล้วกดบันทึกอีกครั้งได้</span>' : ""}</div>
+    ${it.quality.length ? `<ul class="check-list ph-q">${it.quality.map(q=>`<li class="bad">⚠ ${esc(q)}</li>`).join("")}</ul>` : ""}
+    <div class="ph-grid">
       <div>
-        <div class="photo-view"><img id="photo" src="${f.url}" alt="รูปถ่ายเอกสาร"></div>
-        <div class="zoom">ซูม <input type="range" min="100" max="400" step="10" value="100"
-          oninput="document.getElementById('photo').style.width=this.value+'%'"></div>
+        <div class="ph-tools">
+          <span class="hint" style="margin:0">ลากกรอบใหม่:</span>
+          ${Object.entries(BOX).map(([k,l])=>`<button class="btn sm ${PH.draw===k ? "primary" : ""} tb-${k}" onclick="phDraw('${k}')" ${reading ? "disabled" : ""}>${l}</button>`).join("")}
+        </div>
+        <div class="ph-wrap ${PH.draw ? "drawing" : ""}" id="phWrap"><img src="${it.url}" alt="รูปใบกำกับ" draggable="false">${boxes}<div class="bx bx-new" id="phNew" hidden></div></div>
+        <p class="hint">${PH.draw ? `ลากบนรูปเพื่อวางกรอบ “${BOX[PH.draw]}” — ระบบจะอ่านในกรอบใหม่ทันที` : "ถ้าตัวเลขผิด กดชื่อกรอบด้านบน แล้วลากครอบบริเวณนั้นบนรูปให้พอดี"}
+          · <a href="#" onclick="phZoom();return false">ดูรูปขนาดเต็ม</a></p>
       </div>
       <div>
-        <div class="frow">
-          <label><span>เดือนภาษี <span class="req">*</span></span><select class="fin" id="e-month"><option value="">— เลือก —</option>
-            ${MONTHS.map((m,i)=>`<option value="${i+1}" ${e.month===i+1?"selected":""}>${m}</option>`).join("")}</select></label>
-          <label><span>ปี พ.ศ. <span class="req">*</span></span><input class="fin" id="e-year" inputmode="numeric" maxlength="4" placeholder="2569" value="${e.year||""}"></label>
-        </div>
-        <div class="table-wrap"><table class="entry-table">
-          <thead><tr><th>สรุปยอดรวม</th>${COLS.map(c=>`<th class="num">${c[1]}</th>`).join("")}</tr></thead>
-          <tbody>${ROWS.map(([r,label])=>`<tr><td>${label.replace("สรุปยอดรวม","")}${r==="net"?' <span class="req">*</span>':''}</td>
-            ${COLS.map(([c])=>`<td><input class="fin" data-r="${r}" data-c="${c}" inputmode="decimal" placeholder="0.00"
-              value="${e.rows[r] ? numStr(e.rows[r][c]) : ""}"></td>`).join("")}</tr>`).join("")}</tbody>
-        </table></div>
-        <p class="hint"><span class="req">*</span> ต้องกรอก · แถวอื่นกรอกหรือไม่ก็ได้ ถ้ากรอกครบระบบจะตรวจยอดสุทธิให้</p>
-        <details ${Object.values(e.inv).some(Boolean)?"open":""}><summary>ข้อมูลใบกำกับ (ไม่บังคับ)</summary>
-          <div class="frow">${INV.map(([key,label,ph])=>`<label>${label}<input class="fin" data-inv="${key}" placeholder="${ph}" value="${esc(e.inv[key]||"")}"></label>`).join("")}</div>
-        </details>
-        <div class="msgs" id="msgs"></div>
-        <div class="actions">
-          <button class="btn primary" id="e-save" onclick="saveEntry()" disabled>ยืนยันและบันทึก</button>
-          <button class="btn" onclick="closeEntry()">ยกเลิก</button>
+        ${reading ? `<div class="ph-reading"><div class="spin"></div><span id="phMsg-${it.id}">${esc(it.msg || "กำลังอ่าน…")}</span></div>` : ""}
+        ${it.status==="err" ? `<p class="err">${esc(it.msg)}</p><button class="btn sm" onclick="phRetry()">ลองอ่านใหม่</button>` : ""}
+        <fieldset class="ph-form" ${reading ? "disabled" : ""}>
+        <h3>ผู้ขาย</h3>
+        ${phField("sellerName","ชื่อผู้ขาย")}
+        <div class="ph-2">${phField("sellerTax","เลขประจำตัวผู้เสียภาษี",{ph:"13 หลัก"})}${phField("branch","สาขา",{ph:"สำนักงานใหญ่"})}</div>
+        <h3>ใบกำกับภาษี</h3>
+        <div class="ph-2">${phField("date","วันที่",{ph:"วว/ดด/2569"})}${phField("no","เลขที่")}</div>
+        <div class="ph-2">${phField("ref","อ้างถึง")}
+          <label class="ph-f"><span>เดือนภาษี</span><select class="fin" data-f="period">${monthOptions(it.f.period)}</select></label></div>
+        <p class="ph-buyer ${it.f.buyerTax===OWN_TAX ? "ok" : "bad"}">ผู้ซื้อ: ${it.f.buyerTax===OWN_TAX ? "Chan Leasing · " + OWN_TAX + " ✓" : "ไม่พบเลข " + OWN_TAX}</p>
+        <h3>ยอดเงิน</h3>
+        <div class="ph-3">${phField("value","มูลค่าสินค้าหรือบริการ",{money:1})}${phField("vat","ภาษีมูลค่าเพิ่ม",{money:1, vat:1})}${phField("total","รวม",{money:1})}</div>
+        ${it.itemAmts && it.itemAmts.length ? `<p class="hint">รายการที่อ่านได้: ${it.itemAmts.map(bs).join(" + ")} = <b>${bs(it.itemAmts.reduce((a,b)=>a+b,0))}</b></p>` : ""}
+        </fieldset>
+        <ul class="check-list" id="phChecks" style="margin-top:14px"></ul>
+        <div class="line-row" style="margin-top:14px">
+          <button class="btn primary sm" id="phSave" onclick="phSave()">${it.status==="saved" ? "บันทึกการแก้ไข" : "ยืนยันและบันทึก"}</button>
+          <span class="hint" id="phSaveMsg" style="margin:0"></span>
         </div>
       </div>
     </div>
   </div>`;
 }
-
-// อ่านค่าจากฟอร์ม + ตรวจความลงตัว (คิดเป็นสตางค์เพื่อเลี่ยงทศนิยมคลาดเคลื่อน)
-function readEntry(){
-  const panel = document.getElementById("entry"), msgs = [], cell = {};
-  let ok = true;
-  const sat = {};   // sat[row][col] = สตางค์ หรือ null
-  panel.querySelectorAll("input[data-r]").forEach(inp=>{
-    const raw = inp.value.replace(/,/g,"").trim();
-    let v = null, bad = false;
-    if (raw!==""){ /^-?\d+(\.\d{1,2})?$/.test(raw) ? v = Math.round(parseFloat(raw)*100) : bad = true; }
-    (sat[inp.dataset.r] ||= {})[inp.dataset.c] = v;
-    (cell[inp.dataset.r] ||= {})[inp.dataset.c] = inp;
-    inp.classList.toggle("bad", bad);
-    if (bad){ ok = false; msgs.push(["w","ตัวเลขไม่ถูกรูปแบบ: " + inp.value]); }
-  });
-  const month = +document.getElementById("e-month").value, yearRaw = document.getElementById("e-year").value.trim();
-  const year = /^25\d\d$/.test(yearRaw) ? +yearRaw : 0;
-  if (!month || !year){ ok = false; msgs.push(["w","เลือกเดือนภาษีและกรอกปี พ.ศ. (เช่น 2569)"]); }
-
-  const full = {};
-  for (const [r,label] of ROWS){
-    const vals = COLS.map(([c])=>sat[r][c]), n = vals.filter(v=>v!==null).length;
-    full[r] = n===3;
-    if (r==="net" && n<3){ ok = false; msgs.push(["w","กรอก “สรุปยอดรวมสุทธิ” ให้ครบ 3 ช่อง"]); }
-    else if (n>0 && n<3){ ok = false; msgs.push(["w",`“${label}” กรอกไม่ครบ 3 ช่อง (ถ้าไม่ใช้ให้เว้นว่างทั้งแถว)`]); }
-    if (full[r] && vals[0]+vals[1]!==vals[2]){
-      ok = false; COLS.forEach(([c])=>cell[r][c].classList.add("bad"));
-      msgs.push(["w",`“${label}”: มูลค่าสินค้า + ภาษีมูลค่าเพิ่ม = ${baht((vals[0]+vals[1])/100)} ไม่เท่ากับ รวม ${baht(vals[2]/100)}`]);
-    }
-  }
-  if (ROWS.every(([r])=>full[r])) for (const [c,cl] of COLS){
-    const exp = sat.sale[c] + sat.debit[c] - sat.credit[c];
-    if (exp !== sat.net[c]){ ok = false; cell.net[c].classList.add("bad");
-      msgs.push(["w",`ยอดสุทธิช่อง “${cl}” ควรเป็น ${baht(exp/100)} (ภาษีขาย + ใบเพิ่มหนี้ − ใบลดหนี้)`]); }
-  }
-  if (ok) msgs.push(["g", ROWS.every(([r])=>full[r]) ? "✓ ตัวเลขลงตัวทุกแถว และยอดสุทธิตรงกัน" : "✓ ยอดสุทธิลงตัว (มูลค่าสินค้า + ภาษีมูลค่าเพิ่ม = รวม)"]);
-
-  const rows = {}, inv = {};
-  for (const [r] of ROWS) rows[r] = full[r] ? Object.fromEntries(COLS.map(([c])=>[c, sat[r][c]/100])) : null;
-  panel.querySelectorAll("input[data-inv]").forEach(i=>inv[i.dataset.inv] = i.value.trim());
-  return {ok, msgs, entry:{month, year, rows, inv}};
-}
-function validateEntry(){
-  const r = readEntry();
-  document.getElementById("msgs").innerHTML = r.msgs.map(([t,m])=>`<div class="${t}">${esc(m)}</div>`).join("");
-  document.getElementById("e-save").disabled = !r.ok;
-}
-function saveEntry(){
-  const r = readEntry(); if (!r.ok) return;
-  FILES[EDIT.k][EDIT.i].entry = r.entry;
-  closeEntry();
-}
-function bindEntry(){
-  const panel = document.getElementById("entry"); if (!panel) return;
-  panel.querySelectorAll(".fin").forEach(el=>{ el.oninput = validateEntry; el.onchange = validateEntry; });
-  panel.querySelectorAll("input[data-r]").forEach(inp=>inp.onblur = ()=>{   // จัดรูปแบบตัวเลขเมื่อออกจากช่อง
-    const raw = inp.value.replace(/,/g,"").trim();
-    if (/^-?\d+(\.\d{1,2})?$/.test(raw)) inp.value = baht(parseFloat(raw));
-  });
-  validateEntry();
-}
-const photoItems = k => FILES[k].map((f,i)=>({f,i})).filter(x=>x.f.entry);
-function photoEntries(k){
-  const items = photoItems(k); if (!items.length) return "";
+function phSavedCard(){
+  const months = [...new Set(PH.inv.map(x=>x.period))].sort().reverse();
+  if (!PH.month || !months.includes(PH.month)) PH.month = months[0] || null;
+  const rows = PH.inv.filter(x=>x.period===PH.month).sort((a,b)=>a.date.split("/").reverse().join().localeCompare(b.date.split("/").reverse().join()));
+  const sum = k => rows.reduce((a,x)=>a + Math.round(x[k]*100), 0);
+  const load = PH.invState==="loading" ? `<p class="hint">กำลังโหลดรายการ…</p>` : PH.invState==="err" ? `<p class="hint" style="color:var(--warn)">${esc(PH.invMsg)}</p>` : "";
   return `<div class="card">
-    <div class="card-head"><div><h2>ยอดจากรูปถ่าย</h2><p>ยังไม่ได้กำหนดว่านำยอดนี้ไปใช้ส่วนไหน จึงยังไม่รวมกับยอดสรุป</p></div>
-      <span class="chip warn">กรอกจากรูปถ่าย · ยืนยันโดยผู้ใช้</span></div>
-    <div class="table-wrap"><table>
-      <thead><tr><th>รูปถ่าย</th><th>เดือนภาษี</th>${COLS.map(c=>`<th class="num">${c[1]}</th>`).join("")}<th></th></tr></thead>
-      <tbody>${items.map(({f,i})=>{ const e=f.entry, n=e.rows.net; return `<tr>
-        <td>${esc(f.name)}</td><td>${MONTHS[e.month-1]} ${e.year}</td>
-        <td class="num">${baht(n.value)}</td><td class="num">${baht(n.vat)}</td><td class="num">${baht(n.total)}</td>
-        <td class="num"><button class="btn sm" onclick="openEntry('${k}',${i})">แก้ไข</button></td></tr>`; }).join("")}</tbody>
+    <div class="card-head"><div><h2>ใบกำกับที่บันทึกแล้ว</h2><p>เก็บใน Google Sheet แท็บ “ใบกำกับภาษีซื้อ” · รูปเก็บใน Google Drive</p></div>
+      ${months.length ? `<select class="month-sel" onchange="PH.month=this.value;rerenderPhoto()">${months.map(p=>`<option value="${p}" ${p===PH.month ? "selected" : ""}>ภาษีเดือน ${pLabel(p)}</option>`).join("")}</select>` : ""}</div>
+    ${load}
+    ${rows.length ? `<div class="table-wrap"><table class="inv-table">
+      <thead><tr><th>วันที่</th><th>เลขที่</th><th>ผู้ขาย</th><th class="num">มูลค่า</th><th class="num">VAT</th><th class="num">รวม</th><th></th></tr></thead>
+      <tbody>${rows.map(x=>`<tr><td>${esc(x.date)}</td><td>${esc(x.no)}</td><td>${esc(x.sellerName || x.sellerTax)}<small>${esc(x.sellerTax)}${x.branch ? " · " + esc(x.branch) : ""}</small></td>
+        <td class="num">${baht(x.value)}</td><td class="num vat">${baht(x.vat)}</td><td class="num">${baht(x.total)}</td>
+        <td class="num" style="white-space:nowrap">${x.hasImg ? `<button class="btn sm" onclick="phImg('${esc(x.id)}')">ดูรูป</button> ` : ""}<button class="btn sm danger" onclick="phDel('${esc(x.id)}')">ลบ</button></td></tr>`).join("")}
+        <tr class="net"><td colspan="3">รวม ${rows.length} ใบ</td><td class="num">${bs(sum("value"))}</td><td class="num">${bs(sum("vat"))}</td><td class="num">${bs(sum("total"))}</td><td></td></tr></tbody>
     </table></div>
-    <p class="hint">ยอดที่แสดงคือแถว “สรุปยอดรวมสุทธิ” ที่กรอกไว้</p>
+    <div class="line-row"><button class="btn sm" onclick="phExcel()">ดาวน์โหลด Excel</button><span class="hint" id="phListMsg" style="margin:0"></span></div>`
+    : PH.invState==="loading" ? "" : `<p class="hint">ยังไม่มีใบกำกับที่บันทึก</p>`}
   </div>`;
+}
+function renderPhoto(){
+  if (!isAdmin()) return go("dashboard");
+  $view.innerHTML = `<h1>อ่านใบกำกับภาษีจากรูปถ่าย</h1><p class="sub">อัปโหลดรูป → ระบบอ่านให้ → ตรวจกับรูป → กดยืนยัน</p>
+    ${phUploadCard()}${phEditor()}${phSavedCard()}`;
+  bindPhoto();
+  if (PH.invState==="none") phLoadList();
+}
+const rerenderPhoto = () => { if (current==="photo") renderPhoto(); };
+function bindPhoto(){
+  const add = list => phAdd([...list]);
+  const cam = document.getElementById("phCam"), fi = document.getElementById("phFile"), dz = document.getElementById("phDrop");
+  if (cam) cam.onchange = () => add(cam.files);
+  if (fi) fi.onchange = () => add(fi.files);
+  if (dz){ dz.ondragover = e => { e.preventDefault(); dz.classList.add("over"); }; dz.ondragleave = () => dz.classList.remove("over");
+    dz.ondrop = e => { e.preventDefault(); dz.classList.remove("over"); add(e.dataTransfer.files); }; }
+  const ed = document.getElementById("phEditor"); if (!ed) return;
+  ed.querySelectorAll("[data-f]").forEach(el=>{
+    const k = el.dataset.f, money = el.classList.contains("num");
+    el.oninput = el.onchange = () => {
+      const it = curItem(); if (!it) return;
+      it.f[k] = money ? parseS(el.value) : (k==="sellerTax" ? el.value.replace(/\D/g,"") : el.value.trim());
+      if (k==="date"){ const d = dateIn(el.value); if (d && !it.f.period){ it.f.period = periodOfDate(d); } }
+      it.calc = (it.calc || []).filter(x=>x!==k);
+      el.classList.toggle("bad", money && el.value.trim()!=="" && it.f[k]==null);
+      drawChecks();
+    };
+    if (money) el.onblur = () => { const v = parseS(el.value); if (v!=null) el.value = bs(v); };
+    if (k==="date") el.onblur = () => { const d = dateIn(el.value); if (d){ el.value = d; curItem().f.date = d; drawChecks(); } };
+  });
+  bindDraw();
+  drawChecks();
+}
+async function phAdd(files){
+  const bad = [];
+  for (const f of files){
+    if (!/^image\//.test(f.type) && !IMG.includes(ext(f.name))){ bad.push(f.name); continue; }
+    const it = {id: ++PH.seq, name: f.name || "รูปถ่าย.jpg", url: URL.createObjectURL(f), status:"reading", msg:"กำลังเปิดรูป…", f:{}, boxes:{}, calc:[], quality:[]};
+    PH.items.push(it);
+    try { Object.assign(it, await openImage(f)); it.quality = quality(it); await showBase(it); }
+    catch(e){ it.status = "err"; it.msg = e.message; }
+  }
+  if (bad.length){ rerenderPhoto(); const e = document.getElementById("phErr"); if (e){ e.hidden = false; e.textContent = "ไฟล์นี้ไม่ใช่รูป: " + bad.join(", "); } }
+  if (PH.cur < 0 || !curItem() || curItem().status==="saved"){ const i = PH.items.findIndex(x=>x.status!=="saved" && x.status!=="err"); PH.cur = i >= 0 ? i : PH.items.length - 1; }
+  rerenderPhoto();
+  for (const it of PH.items) if (it.status==="reading" && it.base && !it.lines) await readItem(it);
+}
+function phOpen(i){ PH.cur = i; PH.draw = null; rerenderPhoto(); const e = document.getElementById("phEditor"); if (e) e.scrollIntoView({behavior:"smooth", block:"start"}); }
+function phRemove(i){
+  const it = PH.items[i]; if (it.status==="reading") return;
+  URL.revokeObjectURL(it.url); PH.items.splice(i, 1);
+  if (PH.cur >= PH.items.length || PH.cur === i) PH.cur = PH.items.findIndex(x=>x.status!=="saved");
+  else if (PH.cur > i) PH.cur--;
+  rerenderPhoto();
+}
+function phRetry(){ const it = curItem(); if (it && it.base){ it.lines = null; it.boxes = {}; it.f = {}; readItem(it); } }
+function phZoom(){
+  const it = curItem(); if (!it) return;
+  phModal(`<img src="${it.url}" alt="รูปใบกำกับ">`);
+}
+function phModal(html){
+  let m = document.getElementById("phModal");
+  if (!m){ m = document.createElement("div"); m.id = "phModal"; m.className = "ph-modal"; document.body.appendChild(m); m.onclick = e => { if (e.target===m || e.target.dataset.close) m.hidden = true; }; }
+  m.innerHTML = `<div class="ph-modal-in"><button class="btn sm" data-close="1">ปิด ✕</button>${html}</div>`; m.hidden = false;
+}
+
+/* ===== ลากกรอบบนรูป ===== */
+function phDraw(k){ PH.draw = PH.draw===k ? null : k; rerenderPhoto(); }
+function bindDraw(){
+  const wrap = document.getElementById("phWrap"); if (!wrap) return;
+  let st = null; const nb = document.getElementById("phNew");
+  const pos = e => { const r = wrap.getBoundingClientRect(); return {x: Math.max(0, Math.min(1, (e.clientX - r.left)/r.width)), y: Math.max(0, Math.min(1, (e.clientY - r.top)/r.height))}; };
+  const rect = (a,b) => ({x:Math.min(a.x,b.x), y:Math.min(a.y,b.y), w:Math.abs(a.x-b.x), h:Math.abs(a.y-b.y)});
+  wrap.onpointerdown = e => { if (!PH.draw) return; e.preventDefault(); wrap.setPointerCapture(e.pointerId); st = pos(e); nb.hidden = false; nb.className = "bx bx-new bx-" + PH.draw; };
+  wrap.onpointermove = e => { if (!st) return; const r = rect(st, pos(e)); Object.assign(nb.style, {left:r.x*100+"%", top:r.y*100+"%", width:r.w*100+"%", height:r.h*100+"%"}); };
+  wrap.onpointerup = async e => {
+    if (!st) return; const r = rect(st, pos(e)); st = null; nb.hidden = true;
+    if (r.w < 0.02 || r.h < 0.01) return;
+    const it = curItem(), k = PH.draw; it.boxes[k] = r; PH.draw = null;
+    it.status = "reading"; it.msg = "กำลังอ่านกรอบ" + BOX[k] + "…"; rerenderPhoto();
+    it.msg = ""; try { await readBox(it, k); } catch(err){ it.msg = err.message; }
+    it.status = it.savedId ? "saved" : "ready"; rerenderPhoto();
+  };
+}
+
+/* ===== บันทึก / รายการ / Excel ===== */
+async function phLoadList(){
+  PH.invState = "loading";
+  try {
+    const j = await api("invList"); if (!j.ok) throw new Error(j.error);
+    PH.inv = j.invoices || []; PH.invState = "ok";
+  } catch(e){
+    PH.invState = "err"; PH.invMsg = "โหลดรายการไม่ได้: " + (/ไม่รู้จักคำสั่ง/.test(e.message) ? "กรุณาอัปเดต Apps Script เป็น V7" : e.message);
+  }
+  rerenderPhoto();
+}
+function jpegOf(it){
+  const k = Math.min(1, 1800 / Math.max(it.base.width, it.base.height));
+  const c = document.createElement("canvas"); c.width = Math.round(it.base.width*k); c.height = Math.round(it.base.height*k);
+  c.getContext("2d").drawImage(it.base, 0, 0, c.width, c.height);
+  return c.toDataURL("image/jpeg", 0.82);
+}
+async function phSave(){
+  const it = curItem(); if (!it) return;
+  const cs = checksOf(it); if (cs.some(c=>!c.ok && c.hard)) return;
+  const msg = document.getElementById("phSaveMsg"), btn = document.getElementById("phSave");
+  const say = (t, kind) => { msg.textContent = t; msg.style.color = kind==="err" ? "var(--warn)" : kind==="ok" ? "var(--ok)" : "var(--muted)"; };
+  btn.disabled = true; say("กำลังบันทึก…");
+  const f = it.f, b = x => x/100;
+  const bad = cs.filter(c=>!c.ok).length;
+  const inv = {id: it.savedId || "", period: f.period, date: f.date, no: f.no, ref: f.ref || "", sellerName: f.sellerName || "", sellerTax: f.sellerTax || "",
+    branch: f.branch || "", value: b(f.value), vat: b(f.vat), total: b(f.total), status: bad ? "ต้องตรวจ: " + cs.filter(c=>!c.ok).map(c=>c.label).join(" / ") : "ผ่าน"};
+  try {
+    const j = await api("invSave", {inv, image: it.savedId ? null : jpegOf(it)});
+    if (!j.ok) throw new Error(/ไม่รู้จักคำสั่ง/.test(j.error||"") ? "กรุณาอัปเดต Apps Script เป็น V7" : j.error);
+    const rec = Object.assign({}, inv, {id: j.id, savedAt: j.savedAt, savedBy: j.savedBy, hasImg: j.hasImg});
+    PH.inv = PH.inv.filter(x=>x.id !== j.id).concat(rec);
+    it.savedId = j.id; it.status = "saved"; PH.month = inv.period;
+    const next = PH.items.findIndex(x=>x.status!=="saved" && x.status!=="err");
+    if (next >= 0) PH.cur = next;
+    rerenderPhoto();
+    const m2 = document.getElementById("phListMsg"); if (m2){ m2.textContent = "บันทึกใบเลขที่ " + inv.no + " แล้ว"; m2.style.color = "var(--ok)"; }
+  } catch(e){ say("บันทึกไม่สำเร็จ: " + (e.message==="Failed to fetch" ? "เชื่อมต่อไม่ได้" : e.message), "err"); btn.disabled = false; }
+}
+const PH_DEL = {};
+async function phDel(id){
+  const x = PH.inv.find(r=>r.id===id); if (!x) return;
+  const m = document.getElementById("phListMsg");
+  const say = (t, kind) => { if (m){ m.textContent = t; m.style.color = kind==="err" ? "var(--warn)" : kind==="ok" ? "var(--ok)" : "var(--muted)"; } };
+  if (!(PH_DEL[id] && Date.now() - PH_DEL[id] < 5000)){ PH_DEL[id] = Date.now(); return say("กด “ลบ” อีกครั้งเพื่อยืนยันการลบใบเลขที่ " + x.no, "err"); }
+  delete PH_DEL[id]; say("กำลังลบ…");
+  try { const j = await api("invDel", {id}); if (!j.ok) throw new Error(j.error);
+    PH.inv = PH.inv.filter(r=>r.id!==id); PH.items.forEach(it=>{ if (it.savedId===id){ it.savedId = null; it.status = "ready"; } });
+    rerenderPhoto(); }
+  catch(e){ say("ลบไม่สำเร็จ: " + e.message, "err"); }
+}
+async function phImg(id){
+  phModal(`<p class="hint">กำลังโหลดรูป…</p>`);
+  try { const j = await api("invImg", {id}); if (!j.ok) throw new Error(j.error); phModal(`<img src="${j.dataUrl}" alt="รูปใบกำกับ">`); }
+  catch(e){ phModal(`<p class="err">${esc(e.message)}</p>`); }
+}
+function phExcel(){
+  const rows = PH.inv.filter(x=>x.period===PH.month).sort((a,b)=>a.date.split("/").reverse().join().localeCompare(b.date.split("/").reverse().join()));
+  const aoa = [["รายการใบกำกับภาษีซื้อ — Chan Leasing (" + OWN_TAX + ")"], ["ภาษีเดือน " + pLabel(PH.month)], [],
+    ["ลำดับ","วันที่","เลขที่","อ้างถึง","ผู้ขาย","เลขผู้เสียภาษีผู้ขาย","สาขา","มูลค่าสินค้าหรือบริการ","ภาษีมูลค่าเพิ่ม","รวม","ผลตรวจ","ผู้บันทึก"]];
+  rows.forEach((x,i)=>aoa.push([i+1, x.date, x.no, x.ref, x.sellerName, x.sellerTax, x.branch, x.value, x.vat, x.total, x.status, x.savedBy]));
+  const s = k => rows.reduce((a,x)=>a + Math.round(x[k]*100), 0)/100;
+  aoa.push(["","","","","รวม " + rows.length + " ใบ","","", s("value"), s("vat"), s("total")]);
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  ws["!cols"] = [6,12,14,14,36,16,14,16,14,16,30,14].map(w=>({wch:w}));
+  for (let r=4; r<aoa.length; r++) for (const c of [7,8,9]){ const a = XLSX.utils.encode_cell({r, c}); if (ws[a] && typeof ws[a].v==="number") ws[a].z = "#,##0.00"; }
+  for (let r=4; r<aoa.length-1; r++){ const a = XLSX.utils.encode_cell({r, c:5}); if (ws[a]) ws[a].t = "s"; }
+  const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "ใบกำกับภาษีซื้อ");
+  XLSX.writeFile(wb, "Purchase-Tax-Invoices-" + PH.month + ".xlsx");
 }
 
 
