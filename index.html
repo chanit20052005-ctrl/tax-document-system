@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>ระบบตรวจสอบและแปลงเอกสารภาษี — V36</title>
+<title>ระบบตรวจสอบและแปลงเอกสารภาษี — V37</title>
 <style>
 :root{
   --bg:#0f1318; --panel:#171c23; --panel2:#1e252e; --line:#2b3440;
@@ -301,6 +301,8 @@ tr.net td,.sum-table tr.pay td,.sum-table tr.excess td{background:#EAF1FA}
 @media (max-width:980px){.ph-grid{grid-template-columns:1fr}}
 @media (max-width:760px){.ph-cam{display:inline-flex;flex:1 1 100%}.ph-tips{grid-template-columns:1fr}.ph-3{grid-template-columns:1fr}.ph-2{grid-template-columns:1fr}}
 .spin.sm{display:inline-block;width:12px;height:12px;border-width:2px;vertical-align:-1px;margin-right:4px}
+.trend{gap:8px}.trend .bar span{font-size:11px;white-space:nowrap}
+@media (max-width:760px){.trend .bar span{display:none}.trend .bar.cur span{display:block;position:relative}.trend .bar{font-size:11px}}
 </style>
 </head>
 <body>
@@ -436,7 +438,7 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = URL.createObjectURL(
 // ตัดสระบน/ล่าง วรรณยุกต์ ช่องว่าง และ ":" ออก เพื่อเทียบคำไทยให้ทนต่อการเรียงอักขระใน PDF
 const sk = s => s.replace(/[ัำ-ฺ็-๎\s:]/g,"");
 const MONEY = "(-?[\\d,]+\\.\\d\\d)";
-const RE_ROW = new RegExp("^(\\d+)\\s+(\\d\\d/\\d\\d/\\d{4})\\s+(?:\\d\\d/\\d\\d/\\d{4}\\s+)?(\\S+)\\s.*?"+MONEY+"\\s+"+MONEY+"\\s+"+MONEY+"(?:\\s+\\S+)?$");
+const RE_ROW = new RegExp("^(\\d+)\\s+(\\d\\d/\\d\\d/\\d{4})\\s+(?:\\d\\d/\\d\\d/\\d{4}\\s+)?(\\S+)\\s.*?"+MONEY+"\\s+"+MONEY+"\\s+"+MONEY+"(?:\\s+(\\S+))?$");   // กลุ่มสุดท้าย = หมายเหตุ (Y = ใบกำกับที่ยกเลิก)
 const RE_SUM = new RegExp("^(.*?)\\s*"+MONEY+"\\s+"+MONEY+"\\s+"+MONEY+"$");
 const satang = s => Math.round(parseFloat(s.replace(/,/g,""))*100);
 
@@ -524,15 +526,26 @@ function normTail(text){
 
 function parseReport(pages, file){
   const loose = ext(file.name)!=="pdf";
-  const rows = [], sums = [], head = [];
+  const rows = [], sums = [], head = [], hdrMonths = new Set();
   let inHead = true;
-  for (const [pi, lines] of pages.entries()) for (const cells of lines){
+  for (const [pi, lines] of pages.entries()){
+    // หัวกระดาษแต่ละหน้า: ถ้าหลายหน้าระบุ "ภาษีเดือน" ต่างกัน = ไฟล์รวมหลายเดือน
+    const top = sk(lines.slice(0, 4).map(c=>c.join(" ")).join(" "));
+    MONTHS.forEach((name,i)=>{ const mm = top.match(new RegExp(sk("ภาษีเดือน"+name)+"(\\d{4})")); if (mm) hdrMonths.add(mm[1]+"-"+pad2(i+1)); });
+    for (const cells of lines){
     const text = loose ? normTail(cells.join(" ")) : cells.join(" ");
     let m = text.match(RE_ROW);
-    if (m){ inHead = false; rows.push({seq:+m[1], date:m[2], inv:m[3], n:[satang(m[4]),satang(m[5]),satang(m[6])]}); continue; }
+    if (m){
+      inHead = false;
+      const at = text.indexOf(m[3]) + m[3].length;
+      const cancel = m[7]==="Y" || /^\s*ยกเลิก/.test(text.slice(at));   // ใบกำกับที่ยกเลิก: ไม่นับยอด (ตามยอดสรุปท้ายรายงาน) แต่ยังแสดงจำนวน
+      rows.push({seq:+m[1], date:m[2], inv:m[3], n:[satang(m[4]),satang(m[5]),satang(m[6])], cancel});
+      continue;
+    }
     if (pi===0 && inHead) head.push(cells);
     m = text.match(RE_SUM);
     if (m) sums.push({label:sk(m[1]), n:[satang(m[2]),satang(m[3]),satang(m[4])], page:pi+1});
+    }
   }
   const headSk = sk(head.map(c=>c.join(" ")).join(" "));
 
@@ -581,12 +594,35 @@ function parseReport(pages, file){
   const net = S.net || S.gross;
   if (!net) throw new Error("ไม่พบยอดสรุปท้ายรายงาน");
 
-  // ตรวจรายการ
-  const sum = {value:0, vat:0, total:0};
+  const ref = S.gross || net;
+  const st = reportStats(rows, period);
+  const base = {type, title, fileName:file.name, size:file.size, pages:pages.length, company, taxId: tid ? tid[1] : null, S};
+  const sumMatches = st.sum.value===ref.value && st.sum.vat===ref.vat && st.sum.total===ref.total;
+  // ไฟล์รวมหลายเดือน: แยกรายการตามเดือนของวันที่ใบกำกับ (ยอดท้ายรายงานใช้ตรวจยอดรวมทุกเดือน)
+  if (hdrMonths.size > 1){
+    const groups = new Map();
+    for (const r of rows){ const key = r.date.slice(6) + "-" + r.date.slice(3,5); if (!groups.has(key)) groups.set(key, []); groups.get(key).push(r); }
+    const months = [...groups.keys()].sort().map(key=>{
+      const [y, m] = key.split("-").map(Number), p = {m, y, label: MONTHS[m-1] + " " + y}, x = reportStats(groups.get(key), p);
+      return Object.assign({}, base, x, {period:p, net:x.sum, S:{}, sumMatches, part:true});
+    });
+    const first = months[0].period, last = months[months.length-1].period;
+    return Object.assign({}, base, st, {multi:true, months, net, sumMatches,
+      period:{m:last.m, y:last.y, label: MONTHS[first.m-1] + " – " + last.label + " (" + months.length + " เดือน)"}});
+  }
+  return Object.assign({}, base, st, {period, net, sumMatches});
+}
+// สถิติและผลตรวจของชุดรายการ (ไม่นับใบที่ยกเลิก)
+function reportStats(rows, period){
+  const sum = {value:0, vat:0, total:0}, cancelSum = {value:0, vat:0, total:0};
   const invMap = new Map(), days = new Set(), series = new Map();
-  let unbalanced = 0, dup = 0, outOfPeriod = 0, firstDate = null, lastDate = null;
+  let unbalanced = 0, dup = 0, outOfPeriod = 0, cancelled = 0, firstDate = null, lastDate = null;
   const dkey = d => d.slice(6)+d.slice(3,5)+d.slice(0,2);
   for (const r of rows){
+    const m = r.inv.match(/^(.*?)(\d{4})$/), pre = m ? m[1] : "";
+    if (!series.has(pre)) series.set(pre, []);
+    series.get(pre).push(m ? +m[2] : NaN);   // เลขที่ของใบยกเลิกยังนับว่าถูกใช้แล้ว (ไม่ใช่เลขขาดช่วง)
+    if (r.cancel){ cancelled++; cancelSum.value += r.value; cancelSum.vat += r.vat; cancelSum.total += r.total; continue; }
     sum.value += r.value; sum.vat += r.vat; sum.total += r.total;
     if (r.value + r.vat !== r.total) unbalanced++;
     if (invMap.has(r.inv)) dup++; else invMap.set(r.inv, r);
@@ -594,20 +630,13 @@ function parseReport(pages, file){
     days.add(r.date);
     if (!firstDate || dkey(r.date)<dkey(firstDate)) firstDate = r.date;
     if (!lastDate || dkey(r.date)>dkey(lastDate)) lastDate = r.date;
-    const m = r.inv.match(/^(.*?)(\d{4})$/), pre = m ? m[1] : "";
-    if (!series.has(pre)) series.set(pre, []);
-    series.get(pre).push(m ? +m[2] : NaN);
   }
-  const ref = S.gross || net;
   const ser = [...series.entries()].map(([pre, nums])=>{
     const ok = nums.every(n=>!isNaN(n)), uniq = new Set(nums), min = Math.min(...nums), max = Math.max(...nums);
     return {pre, count:nums.length, first: ok ? pre+String(min).padStart(4,"0") : "", last: ok ? pre+String(max).padStart(4,"0") : "",
       gaps: ok ? (max-min+1) - uniq.size : 0};
   }).sort((a,b)=>b.count-a.count);
-
-  return {type, title, fileName:file.name, size:file.size, pages:pages.length, company, taxId: tid ? tid[1] : null, period,
-    count:rows.length, sum, S, net, invMap, series:ser,
-    sumMatches: sum.value===ref.value && sum.vat===ref.vat && sum.total===ref.total,
+  return {count:rows.length - cancelled, sum, invMap, series:ser, cancelled, cancelSum,
     unbalanced, dup, outOfPeriod, gaps: ser.reduce((a,s)=>a+s.gaps,0),
     days:days.size, daysInMonth:new Date(period.y-543, period.m, 0).getDate(), firstDate, lastDate};
 }
@@ -689,7 +718,7 @@ function delta(cur, prev, label){
   return ` · เทียบ ${label} <span class="delta">${pct>=0 ? "▲" : "▼"} ${Math.abs(pct).toFixed(1)}%</span>`;
 }
 function trendCard(k, recs){
-  const list = recs.slice(0,6).reverse();
+  const list = recs.slice(0,12).reverse();   // 12 เดือนล่าสุด
   if (list.length < 2) return "";
   const max = Math.max(...list.map(r=>r.pay), 1);
   return `<div class="card"><h2>ภาษีที่ต้องจ่ายรายเดือน</h2>
@@ -961,9 +990,10 @@ async function addWsFiles(k, list){
     try {
       const pages = await reader(file, (n,total)=>{ const el = document.getElementById("prog-"+f.id); if (el) el.textContent = `กำลังอ่าน… หน้า ${n}/${total}`; });
       const r = parseReport(pages, file);
-      const old = W[k].files.find(x=>x!==f && x.status==="ok" && x.type===r.type);   // ไฟล์ใหม่แทนที่ไฟล์ประเภทเดียวกัน
+      const old = W[k].files.find(x=>x!==f && x.status==="ok" && x.type===r.type && !!x.multi===!!r.multi);   // ไฟล์ใหม่แทนที่ไฟล์ประเภทเดียวกัน
       if (old) W[k].files.splice(W[k].files.indexOf(old), 1);
-      W[k][r.type] = r;
+      if (r.multi){ (W[k].multi ||= {})[r.type] = r; f.multi = true; }
+      else W[k][r.type] = r;
       Object.assign(f, {status:"ok", type:r.type, period:r.period.label,
         warn: WS[k].taxId && r.taxId && r.taxId!==WS[k].taxId ? "เลขผู้เสียภาษีไม่ตรงกับพื้นที่นี้" : ""});
     } catch(e){
@@ -971,6 +1001,7 @@ async function addWsFiles(k, list){
     }
     if (current===k) renderWorkspace(k);
   }
+  saveMulti(k);  // ไฟล์รวมหลายเดือน: บันทึกทุกเดือนในครั้งเดียว (ไม่ส่ง LINE)
   autoSave(k);   // บันทึกยอดสรุปของเดือนลง Google Sheet
   autoLine(k);   // ส่งการ์ดเข้า LINE อัตโนมัติเมื่อมีภาษีซื้อและภาษีขายครบ (แบบเดียวกับ PO ที่ส่งทุกครั้งที่ซิงก์)
   if (bad.length && current===k){ const el = document.getElementById("err"); el.hidden = false;
@@ -978,7 +1009,7 @@ async function addWsFiles(k, list){
 }
 function removeWsFile(k, i){
   const f = W[k].files[i];
-  if (f.status==="ok") W[k][f.type] = null;
+  if (f.status==="ok"){ if (f.multi){ if (W[k].multi) delete W[k].multi[f.type]; } else W[k][f.type] = null; }
   W[k].files.splice(i,1);
   renderWorkspace(k);
 }
@@ -987,7 +1018,7 @@ function reportCard(r, heading){
     ? [["สรุปยอดรวม"+(r.type==="buy"?"ภาษีซื้อ":"ภาษีขาย"), r.S.gross], ["สรุปยอดรวมใบเพิ่มหนี้", r.S.debit], ["สรุปยอดรวมใบลดหนี้", r.S.credit], ["สรุปยอดรวมสุทธิ", r.S.net, true]].filter(l=>l[1])
     : [];
   return `<div class="card">
-    <div class="card-head"><div><h2>${heading}</h2><p>${esc(r.title)} · ${esc(r.fileName)} · ${num(r.count)} รายการ${ext(r.fileName)==="pdf" ? " · "+r.pages+" หน้า" : ""}</p></div></div>
+    <div class="card-head"><div><h2>${heading}</h2><p>${esc(r.title)} · ${esc(r.fileName)} · ${num(r.count)} รายการ${r.cancelled ? ` · ยกเลิก ${num(r.cancelled)} ใบ (ไม่นับยอด)` : ""}${ext(r.fileName)==="pdf" ? " · "+r.pages+" หน้า" : ""}</p></div></div>
     <div class="kpis" ${lines.length?"":'style="margin-bottom:0"'}>
       <div class="kpi"><span>มูลค่าสินค้าหรือบริการ</span><b>${bs(r.net.value)}</b></div>
       <div class="kpi vat"><span>ภาษีมูลค่าเพิ่ม</span><b>${bs(r.net.vat)}</b></div>
@@ -1010,6 +1041,7 @@ function checksCard(k){
     add(p+"มูลค่าสินค้า + ภาษีมูลค่าเพิ่ม = รวม ทุกรายการ", chip(r.unbalanced, "ลงตัว", num(r.unbalanced)+" รายการไม่ลงตัว"));
     add(p+"ใบกำกับลงวันที่อยู่ในเดือน "+r.period.label, chip(r.outOfPeriod, "ครบทุกใบ", num(r.outOfPeriod)+" ใบนอกเดือน"));
     add(p+"เลขที่ใบกำกับซ้ำ", chip(r.dup, "ไม่พบ", num(r.dup)+" รายการ"));
+    if (r.cancelled) add(p+"ใบกำกับที่ยกเลิก (ไม่นับยอด)", `<span class="chip muted">${num(r.cancelled)} ใบ · ภาษี ${bs(r.cancelSum.vat)}</span>`);
   }
   if (sale){
     add("ภาษีขาย: เลขที่ขาดช่วง", chip(sale.gaps, "ไม่พบ", num(sale.gaps)+" เลข"));
@@ -1040,6 +1072,7 @@ function renderWorkspace(k){
       </div>
     </div>
     ${wsUploadCard(k)}
+    ${multiCard(k)}
     ${main ? `<div class="card"><div class="meta">
         <div><span>ผู้ประกอบการ</span>${esc(main.company || "—")}</div>
         <div><span>เลขประจำตัวผู้เสียภาษี</span>${main.taxId || (sale&&sale.taxId) || (buy&&buy.taxId) || "—"}</div>
@@ -1079,6 +1112,8 @@ function localChecks(k){
     add(!out, out ? `ใบกำกับนอกเดือนภาษี ${num(out)} ใบ` : "ใบกำกับอยู่ในเดือนภาษีทุกใบ");
     const dg = rs.reduce((a,r)=>a+r.dup,0) + (sale ? sale.gaps : 0);
     add(!dg, dg ? `พบเลขที่ซ้ำหรือขาดช่วง ${num(dg)} รายการ` : "ไม่พบเลขที่ซ้ำหรือขาดช่วง");
+    const cx = rs.reduce((a,r)=>a+(r.cancelled||0),0);
+    if (cx) add(true, `ใบกำกับที่ยกเลิก ${num(cx)} ใบ ไม่นับยอด`);
   }
   if (h) add(h.period && !h.bad, h.period && !h.bad ? "รายงานค่างวดตรงกับรายงานภาษีขาย" : "รายงานค่างวดไม่ตรงกับรายงานภาษีขาย");
   return items;
@@ -1380,6 +1415,70 @@ async function autoSave(k){
     LAST_SAVED[k] = null;
     setSave(k, "บันทึกไม่สำเร็จ: " + FS_ERR(e), "err");
   }
+}
+
+/* ===== ไฟล์รวมหลายเดือน ===== */
+const MULTI = {};   // area -> {period -> {state, msg}}
+function multiMonths(k){
+  const m = W[k].multi || {}, out = new Map();
+  for (const t of ["buy","sale"]) if (m[t]) for (const x of m[t].months){ const key = pKey(x.period); (out.get(key) || out.set(key, {}).get(key))[t] = x; }
+  return [...out.entries()].sort((a,b)=>a[0].localeCompare(b[0]));
+}
+function multiRecord(k, buy, sale){
+  const diff = sale.net.vat - buy.net.vat, v = r => [r.net.value, r.net.vat, r.net.total], checks = [];
+  const add = (ok, label) => checks.push({ok:!!ok, label});
+  add(true, "ภาษีซื้อและภาษีขายเป็นเดือนเดียวกัน");
+  add(buy.sumMatches && sale.sumMatches && !buy.unbalanced && !sale.unbalanced,
+    buy.sumMatches && sale.sumMatches ? "ยอดรวมทุกเดือนตรงกับยอดท้ายรายงาน" : "ยอดรวมทุกเดือนไม่ตรงกับยอดท้ายรายงาน");
+  const dg = buy.dup + sale.dup;
+  add(!dg, dg ? `พบเลขที่ซ้ำ ${num(dg)} รายการ` : "ไม่พบเลขที่ซ้ำ");
+  const cx = (buy.cancelled||0) + (sale.cancelled||0);
+  if (cx) add(true, `ใบกำกับที่ยกเลิก ${num(cx)} ใบ ไม่นับยอด`);
+  return {area:k, areaName:WS[k].name, period:pKey(sale.period), label:sale.period.label,
+    buy:v(buy), sale:v(sale), pay:Math.max(0, diff), excess:Math.max(0, -diff), buyCount:buy.count, saleCount:sale.count, checks};
+}
+async function saveMulti(k){
+  const m = W[k].multi; if (!m || !m.buy || !m.sale) return;
+  const st = MULTI[k] = {}, list = multiMonths(k).filter(([,x])=>x.buy && x.sale);
+  if (!isAdmin() || !AUTH.viewKey){ list.forEach(([p])=>st[p] = {state:"err", msg:"ไม่มีสิทธิ์บันทึก"}); return; }
+  list.forEach(([p])=>st[p] = {state:"saving", msg:"กำลังบันทึก…"});
+  if (current===k) renderWorkspace(k);
+  const b = x => x/100, savedAt = stampBE(), savedBy = AUTH.name || AUTH.email, recs = [];
+  try {
+    const bt = db.batch();
+    for (const [p, x] of list){
+      const rec = multiRecord(k, x.buy, x.sale), record = Object.assign({}, rec, {buy:rec.buy.map(b), sale:rec.sale.map(b), pay:b(rec.pay), excess:b(rec.excess)});
+      bt.set(pubRef(AUTH.viewKey).collection("records").doc(k + "_" + p), Object.assign({}, record, {savedAt, savedBy, ts:FS_TS()}));
+      recs.push([p, rec, record]);
+    }
+    await bt.commit();
+    for (const [p, rec] of recs){ (STORE[k] ||= {})[p] = Object.assign({}, rec, {savedAt, savedBy}); st[p] = {state:"ok", msg:"บันทึกแล้ว"}; }
+    saveCache(AUTH.viewKey, Object.values(STORE).flatMap(o=>Object.values(o)).map(r=>Object.assign({}, r, {buy:r.buy.map(b), sale:r.sale.map(b), pay:b(r.pay), excess:b(r.excess)})));
+    setSave(k, `☁ บันทึกยอด ${recs.length} เดือนแล้ว (${savedAt})`, "ok");
+    (async()=>{ for (const [, , record] of recs){ try { await api("save", {record}); } catch(e){ console.warn("backup", e.message); } } })();   // สำรองลง Sheet ทีละเดือน เบื้องหลัง
+  } catch(e){
+    list.forEach(([p])=>st[p] = {state:"err", msg:"บันทึกไม่สำเร็จ"});
+    setSave(k, "บันทึกไม่สำเร็จ: " + FS_ERR(e), "err");
+  }
+  if (current===k) renderWorkspace(k);
+}
+function multiCard(k){
+  const m = W[k].multi; if (!m || (!m.buy && !m.sale)) return "";
+  const rows = multiMonths(k), st = MULTI[k] || {};
+  const files = ["buy","sale"].map(t=>m[t] ? `${TYPE[t]}: ${esc(m[t].fileName)} · ${num(m[t].count)} รายการ${m[t].cancelled ? ` · ยกเลิก ${num(m[t].cancelled)} ใบ` : ""}` : `${TYPE[t]}: ยังไม่ได้อัปโหลดไฟล์รวม`).join("<br>");
+  const total = t => m[t] ? `<span class="chip ${m[t].sumMatches ? "ok" : "warn"}">${TYPE[t]} ${m[t].sumMatches ? "ยอดรวมทุกเดือนตรงกับยอดท้ายรายงาน" : "ยอดรวมไม่ตรงกับยอดท้ายรายงาน"}</span>` : "";
+  return `<div class="card">
+    <div class="card-head"><div><h2>นำเข้าหลายเดือน</h2><p>${files}</p></div></div>
+    <div class="table-wrap"><table class="sum-table">
+      <thead><tr><th>เดือนภาษี</th><th class="num">ภาษีซื้อ</th><th class="num">ภาษีขาย</th><th class="num">ต้องจ่าย ภ.พ.30</th><th class="num">ภาษีซื้อเกิน</th><th>สถานะ</th></tr></thead>
+      <tbody>${rows.map(([p, x])=>{ const d = x.buy && x.sale ? x.sale.net.vat - x.buy.net.vat : null, s = st[p];
+        return `<tr><td>${pLabel(p)}</td><td class="num">${x.buy ? bs(x.buy.net.vat) : "—"}</td><td class="num">${x.sale ? bs(x.sale.net.vat) : "—"}</td>
+          <td class="num">${d==null ? "—" : bs(Math.max(0,d))}</td><td class="num">${d==null || d >= 0 ? "—" : bs(-d)}</td>
+          <td>${d==null ? `<span class="chip warn">มีแต่${x.buy ? "ภาษีซื้อ" : "ภาษีขาย"}</span>` : s ? `<span class="chip ${s.state==="ok" ? "ok" : s.state==="err" ? "warn" : "info"}">${esc(s.msg)}</span>` : `<span class="chip muted">รออัปโหลดอีกไฟล์</span>`}</td></tr>`; }).join("")}</tbody>
+    </table></div>
+    <div class="line-row">${total("buy")}${total("sale")}</div>
+    <p class="hint">แยกเดือนตามวันที่ของใบกำกับ · ใบกำกับที่ยกเลิกไม่นับยอด · ไฟล์รวมหลายเดือนไม่ส่งการ์ด LINE (ส่งเองได้ที่ Dashboard)</p>
+  </div>`;
 }
 
 /* ---------- เมนูอัปโหลดรูปถ่าย: อ่านใบกำกับภาษีซื้อจากรูป (OCR ด้วย Tesseract.js ในเบราว์เซอร์) ---------- */
