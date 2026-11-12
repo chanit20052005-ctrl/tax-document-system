@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>ระบบตรวจสอบและแปลงเอกสารภาษี — V39</title>
+<title>ระบบตรวจสอบและแปลงเอกสารภาษี — V40</title>
 <style>
 :root{
   --bg:#0f1318; --panel:#171c23; --panel2:#1e252e; --line:#2b3440;
@@ -306,6 +306,7 @@ tr.net td,.sum-table tr.pay td,.sum-table tr.excess td{background:#EAF1FA}
 .cancel-row td,.cancel-text,.cancel-title{color:#C62828 !important}
 .cancel-row td{background:rgba(198,40,40,.05)}
 .check-list li.cancel-li{background:#FDECEA;color:#C62828}
+.sum-block{margin-top:16px;padding-top:14px;border-top:1px solid var(--line)}.sum-block .fin.sm{width:auto;padding:5px 8px}
 </style>
 </head>
 <body>
@@ -714,7 +715,8 @@ function dashLine(k, rec){
     <div class="send-confirm" id="dconf-${k}" hidden>
       <span>ส่งการ์ดสรุปภาษี ${esc(d.name)} ภาษีเดือน ${esc(d.period)} เข้า LINE?</span>
       <div><button class="btn primary sm" onclick="dashSendNow('${k}')">ยืนยันส่ง</button> <button class="btn sm" onclick="dashCancel('${k}')">ยกเลิก</button></div>
-    </div>`;
+    </div>
+    ${sumBlock(k)}`;
 }
 function delta(cur, prev, label){
   if (prev==null) return "";
@@ -1457,6 +1459,97 @@ async function autoSave(k){
     LAST_SAVED[k] = null;
     setSave(k, "บันทึกไม่สำเร็จ: " + FS_ERR(e), "err");
   }
+}
+
+/* ===== การ์ดสรุปรวมหลายเดือน ===== */
+const SUM_RANGE = {};
+function sumBlock(k){
+  const recs = records(k).filter(r=>!r.local || r.savedAt).slice().sort((a,b)=>a.period.localeCompare(b.period));
+  if (recs.length < 2) return "";
+  const ps = recs.map(r=>r.period), last = ps[ps.length-1];
+  const sel = SUM_RANGE[k] || (SUM_RANGE[k] = {from: ps.find(p=>p.slice(0,4)===last.slice(0,4)) || ps[0], to: last});
+  const opt = v => ps.map(p=>`<option value="${p}" ${p===v ? "selected" : ""}>${esc(shortLabel(p))}</option>`).join("");
+  return `<div class="sum-block">
+    <b>สรุปรวมหลายเดือน</b>
+    <div class="line-row">
+      <select class="fin sm" onchange="SUM_RANGE['${k}'].from=this.value">${opt(sel.from)}</select> ถึง
+      <select class="fin sm" onchange="SUM_RANGE['${k}'].to=this.value">${opt(sel.to)}</select>
+      <button class="btn sm" id="ssend-${k}" onclick="sumAsk('${k}')">ส่งสรุปรวมเข้า LINE</button>
+    </div>
+    <div class="send-confirm" id="sconf-${k}" hidden><span id="sconfText-${k}"></span>
+      <div><button class="btn primary sm" onclick="sumSendNow('${k}')">ยืนยันส่ง</button> <button class="btn sm" onclick="sumCancel('${k}')">ยกเลิก</button></div></div>
+    <div class="hint" id="sstat-${k}" style="margin:6px 0 0"></div>
+  </div>`;
+}
+function sumRecs(k){
+  let {from, to} = SUM_RANGE[k] || {}; if (from > to) [from, to] = [to, from];
+  return records(k).filter(r=>r.period >= from && r.period <= to).sort((a,b)=>a.period.localeCompare(b.period));
+}
+function sumData(k){
+  const recs = sumRecs(k); if (!recs.length) return null;
+  const tb = recs.reduce((a,r)=>a + r.buy[1], 0), ts = recs.reduce((a,r)=>a + r.sale[1], 0), tp = recs.reduce((a,r)=>a + r.pay, 0);
+  const bad = recs.filter(r=>r.checks.some(c=>!c.ok));
+  const cx = recs.filter(r=>(r.cancels||[]).length);
+  const nc = cx.reduce((a,r)=>a + r.cancels.length, 0);
+  const first = recs[0].period, last = recs[recs.length-1].period;
+  const range = first.slice(0,4)===last.slice(0,4) ? MONTHS[+first.slice(5)-1] + " – " + pLabel(last) : pLabel(first) + " – " + pLabel(last);
+  return {name: WS[k].name, range: range + ` (${recs.length} เดือน)`, n: recs.length,
+    rows: recs.map(r=>({m: shortLabel(r.period).split(" ")[0], label: pLabel(r.period), buy: bs(r.buy[1]), sale: bs(r.sale[1]), pay: bs(r.pay), excess: r.excess ? bs(r.excess) : "", cancel: (r.cancels||[]).length > 0})),
+    buy: bs(tb), sale: bs(ts), pay: bs(tp), ok: !bad.length,
+    status: bad.length ? `พบ ${bad.length} เดือนที่ต้องตรวจ: ${bad.map(r=>shortLabel(r.period)).join(", ")}` : "✓ ตรวจแล้ว: ยอดทุกเดือนตรงกับรายงาน",
+    cancelNote: nc ? `ใบกำกับยกเลิก ${num(nc)} ใบ ไม่นับยอด` : "",
+    cancelLines: cx.map(r=>`● ${pLabel(r.period)}: ${r.cancels.slice(0,3).map(x=>x.inv).join(", ")}${r.cancels.length > 3 ? ` และอีก ${r.cancels.length - 3} ใบ` : ""}`),
+    source: `ที่มา: รายงานภาษีซื้อ ${num(recs.reduce((a,r)=>a + r.buyCount, 0))} รายการ · รายงานภาษีขาย ${num(recs.reduce((a,r)=>a + r.saleCount, 0))} ใบ`};
+}
+function sumText(d){
+  return [`สรุปภาษีมูลค่าเพิ่ม · รวมหลายเดือน`, `${d.name} ${d.range}`, "",
+    ...d.rows.map(r=>`${r.label}: ซื้อ ${r.buy} · ขาย ${r.sale} · จ่าย ${r.pay}${r.excess ? ` (ซื้อเกิน ${r.excess})` : ""}${r.cancel ? " ●" : ""}`), "",
+    `รวม: ภาษีซื้อ ${d.buy} · ภาษีขาย ${d.sale}`, `ภาษีที่ต้องจ่าย ภ.พ.30 รวม ${d.n} เดือน: ${d.pay} บาท`, "", d.status,
+    ...(d.cancelNote ? [d.cancelNote, ...d.cancelLines] : [])].join("\n");
+}
+function sumFlex(d){
+  const T = (text, o) => Object.assign({type:"text", text}, o);
+  const cell = (text, o) => T(text, Object.assign({size:"xxs", align:"end", flex:5, color:"#111111"}, o));
+  const head = {type:"box", layout:"horizontal", contents:[T("เดือน", {size:"xxs", color:"#888888", flex:3}), cell("ภาษีซื้อ", {color:"#888888"}), cell("ภาษีขาย", {color:"#888888"}), cell("ต้องจ่าย", {color:"#888888"})]};
+  const line = r => ({type:"box", layout:"horizontal", margin:"sm", contents:[
+    {type:"box", layout:"baseline", flex:3, contents:[T(r.m, {size:"xxs", color:"#111111", flex:0}), ...(r.cancel ? [T(" ●", {size:"xxs", color:"#C62828", flex:0})] : [])]},
+    cell(r.buy), cell(r.sale),
+    {type:"box", layout:"vertical", flex:5, contents:[cell(r.pay, {weight:"bold", color:"#0F2A47", flex:0}), ...(r.excess ? [cell("ซื้อเกิน " + r.excess, {color:"#999999", flex:0})] : [])]}]});
+  const sep = m => ({type:"separator", margin: m || "sm"});
+  const body = [head, sep()];
+  d.rows.forEach((r,i)=>{ body.push(line(r)); if (i < d.rows.length-1) body.push(sep()); });
+  body.push({type:"separator", margin:"md", color:"#0F2A47"},
+    {type:"box", layout:"horizontal", margin:"md", contents:[T("รวม", {size:"xs", weight:"bold", flex:3}), cell(d.buy, {weight:"bold"}), cell(d.sale, {weight:"bold"}), cell(d.pay, {weight:"bold", color:"#0F2A47"})]},
+    T(`ภาษีที่ต้องจ่าย ภ.พ.30 รวม ${d.n} เดือน`, {size:"xs", color:"#888888", margin:"xl"}),
+    T(d.pay + " บาท", {size:"xxl", weight:"bold", color:"#111111", margin:"xs"}),
+    T("รวมยอดที่ต้องจ่ายของแต่ละเดือน (เดือนที่ภาษีซื้อเกินนับเป็น 0)", {size:"xxs", color:"#999999", wrap:true, margin:"xs"}),
+    {type:"box", layout:"vertical", margin:"lg", backgroundColor: d.ok ? "#E8F7EF" : "#FFF4DB", cornerRadius:"8px", paddingAll:"10px",
+      contents:[T(d.status, {size:"xs", color: d.ok ? "#1E8E5A" : "#9A6700", weight:"bold", wrap:true})]},
+    ...(d.cancelNote ? [{type:"box", layout:"vertical", margin:"md", backgroundColor:"#FDECEA", cornerRadius:"8px", paddingAll:"10px", contents:[
+      T("⚠ " + d.cancelNote, {size:"xs", color:"#C62828", weight:"bold", wrap:true}), ...d.cancelLines.map(l=>T(l, {size:"xxs", color:"#C62828", wrap:true, margin:"xs"}))]}] : []),
+    T(d.source, {size:"xxs", color:"#999999", wrap:true, margin:"lg"}));
+  return {type:"flex", altText:`สรุปภาษีรวม ${d.name} ${d.range}: ภาษีที่ต้องจ่ายรวม ${d.pay} บาท`,
+    contents:{type:"bubble", size:"giga",
+      header:{type:"box", layout:"vertical", backgroundColor:"#0F2A47", paddingAll:"18px", contents:[
+        T("สรุปภาษีมูลค่าเพิ่ม · รวมหลายเดือน", {size:"xs", color:"#9CCBFF"}), T(d.name, {size:"xl", weight:"bold", color:"#FFFFFF", margin:"xs"}),
+        T(d.range, {size:"xs", color:"#C9D6E3", margin:"xs"})]},
+      body:{type:"box", layout:"vertical", paddingAll:"16px", contents:body},
+      footer:{type:"box", layout:"vertical", contents:[{type:"button", style:"primary", color:"#0F2A47", height:"sm", action:{type:"uri", label:"เปิดดูบนเว็บ", uri:viewLink()}}]}}};
+}
+function sumAsk(k){
+  const d = sumData(k); if (!d) return;
+  document.getElementById("sconfText-"+k).textContent = `ส่งสรุปรวม ${d.name} ${d.range} · ต้องจ่ายรวม ${d.pay} บาท เข้า LINE?`;
+  document.getElementById("sconf-"+k).hidden = false; document.getElementById("ssend-"+k).hidden = true;
+}
+function sumCancel(k){ document.getElementById("sconf-"+k).hidden = true; document.getElementById("ssend-"+k).hidden = false; }
+async function sumSendNow(k){
+  sumCancel(k);
+  const d = sumData(k), st = document.getElementById("sstat-"+k), btn = document.getElementById("ssend-"+k);
+  if (!d) return;
+  btn.disabled = true; st.textContent = "กำลังส่งสรุปรวม…"; st.style.color = "var(--muted)";
+  const r = await sendLineMessage(sumText(d), sumFlex(d));
+  btn.disabled = false;
+  st.textContent = (r.ok===false ? "ส่งไม่สำเร็จ: " : "สรุปรวม: ") + r.detail; st.style.color = r.ok===true ? "var(--ok)" : r.ok===false ? "var(--warn)" : "var(--muted)";
 }
 
 /* ===== ไฟล์รวมหลายเดือน ===== */
