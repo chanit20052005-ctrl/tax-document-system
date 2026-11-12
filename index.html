@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>ระบบตรวจสอบและแปลงเอกสารภาษี — V34</title>
+<title>ระบบตรวจสอบและแปลงเอกสารภาษี — V35</title>
 <style>
 :root{
   --bg:#0f1318; --panel:#171c23; --panel2:#1e252e; --line:#2b3440;
@@ -795,6 +795,17 @@ function renderSettings(){
       <div class="hint" id="sheetInfo" style="margin:0">${sheetInfo()}</div>
     </div>
     <div class="card">
+      <p class="card-title">🔗 ลิงก์สำหรับผู้บริหาร</p>
+      <p class="hint" style="margin:0 0 12px">ปุ่ม “เปิดดูบนเว็บ” ในการ์ด LINE ใช้ลิงก์นี้ — เปิดแล้วเห็น Dashboard ทันทีโดยไม่ต้องล็อกอิน (ดูได้อย่างเดียว)
+        · ถ้าลิงก์หลุดออกไปนอกกลุ่ม กด “เปลี่ยนรหัส” แล้วลิงก์เก่าทั้งหมดจะใช้ไม่ได้ทันที (ส่งการ์ดใหม่เพื่อให้ผู้บริหารได้ลิงก์ใหม่)</p>
+      <input class="fin mono" id="viewLinkBox" readonly value="${esc(viewLink())}" style="max-width:640px" onclick="this.select()">
+      <div class="line-row">
+        <button class="btn sm" onclick="viewCopy()">คัดลอกลิงก์</button>
+        <button class="btn sm danger" onclick="viewReset()">เปลี่ยนรหัส</button>
+        <span class="hint" id="viewStatus" style="margin:0"></span>
+      </div>
+    </div>
+    <div class="card">
       <p class="card-title">👥 ผู้ใช้งาน</p>
       <p class="hint" style="margin:0 0 12px"><b>Admin</b> = อัปโหลด / ส่ง LINE / ตั้งค่า &nbsp;·&nbsp; <b>User</b> = ดูอย่างเดียว</p>
       <div id="userList" class="hint">กำลังโหลด…</div>
@@ -809,6 +820,17 @@ function renderSettings(){
       <span class="hint" id="userStatus"></span>
     </div>`;
   loadUsers();
+}
+/* ===== ลิงก์ผู้บริหาร ===== */
+function viewSay(t, kind){ const el = document.getElementById("viewStatus"); if (el){ el.textContent = t; el.style.color = kind==="ok" ? "var(--ok)" : kind==="err" ? "var(--warn)" : "var(--muted)"; } }
+async function viewCopy(){ try { await navigator.clipboard.writeText(viewLink()); viewSay("คัดลอกแล้ว", "ok"); } catch(e){ document.getElementById("viewLinkBox").select(); viewSay("กด Ctrl+C เพื่อคัดลอก"); } }
+let VIEW_ASK = 0;
+async function viewReset(){
+  if (Date.now() - VIEW_ASK > 5000){ VIEW_ASK = Date.now(); return viewSay("กด “เปลี่ยนรหัส” อีกครั้งเพื่อยืนยัน — ลิงก์ในการ์ดเก่าทั้งหมดจะเปิดไม่ได้", "err"); }
+  VIEW_ASK = 0; viewSay("กำลังเปลี่ยน…");
+  try { const j = await api("viewKeyReset"); if (!j.ok) throw new Error(/ไม่รู้จักคำสั่ง/.test(j.error||"") ? "กรุณาอัปเดต Apps Script เป็น V9" : j.error);
+    AUTH.viewKey = j.viewKey; document.getElementById("viewLinkBox").value = viewLink(); viewSay("เปลี่ยนแล้ว — ลิงก์เก่าใช้ไม่ได้แล้ว", "ok"); }
+  catch(e){ viewSay("เปลี่ยนไม่สำเร็จ: " + e.message, "err"); }
 }
 /* ===== จัดการผู้ใช้ (Admin) ===== */
 let USERS = [];
@@ -1075,7 +1097,7 @@ function cardFlex(d, title){
           contents:[T(d.status, {size:"xs", color: d.ok ? "#1E8E5A" : "#9A6700", weight:"bold", wrap:true})]},
         T(d.source, {size:"xxs", color:"#999999", wrap:true, margin:"lg"})]},
       footer:{type:"box", layout:"vertical", contents:[
-        {type:"button", style:"primary", color:"#0F2A47", height:"sm", action:{type:"uri", label:"เปิดดูบนเว็บ", uri:SITE_URL}}]}}};
+        {type:"button", style:"primary", color:"#0F2A47", height:"sm", action:{type:"uri", label:"เปิดดูบนเว็บ", uri:viewLink()}}]}}};
 }
 // วาดการ์ดลง canvas เพื่อบันทึก/คัดลอกเป็นรูป (กว้าง 300 หน่วย ขยาย 3 เท่าให้คมชัด)
 function drawCard(d){
@@ -1968,7 +1990,16 @@ const FIREBASE_CONFIG = {
 };
 // ลิงก์ Apps Script (ลงท้ายด้วย /exec — ไม่ต้องมี ?key=)
 const GAS_URL = "https://script.google.com/macros/s/AKfycbygd3zyjrzAaVRmoLlCfX64XCxvy663paxIFwjvkRzpPmQbvYz0YpwgPRlkduAQ6BqU/exec";
-const AUTH = {role:null, email:"", name:""};
+const AUTH = {role:null, email:"", name:"", viewKey:""};
+// ลิงก์ผู้บริหาร (#view=รหัส จากปุ่ม "เปิดดูบนเว็บ" ในการ์ด LINE): จำรหัสไว้ในเครื่อง แล้วลบออกจากแถบที่อยู่
+const VIEW_KEY_LS = "taxsys_view_v2";
+const viewStored = () => { try { return localStorage.getItem(VIEW_KEY_LS) || ""; } catch(e){ return ""; } };
+(function(){
+  const v = new URLSearchParams(location.hash.slice(1)).get("view");
+  if (v){ try { localStorage.setItem(VIEW_KEY_LS, v); } catch(e){} window.VIEW_ONCE = v; history.replaceState(null, "", location.pathname + location.search); }
+})();
+const viewKeyNow = () => window.VIEW_ONCE || viewStored();
+const viewLink = () => AUTH.viewKey ? SITE_URL + "#view=" + encodeURIComponent(AUTH.viewKey) : SITE_URL;
 const isAdmin = () => AUTH.role === "Admin";
 let fbAuth = null;
 try { firebase.initializeApp(FIREBASE_CONFIG); fbAuth = firebase.auth(); } catch(e){ fbAuth = null; }
@@ -1976,11 +2007,19 @@ try { firebase.initializeApp(FIREBASE_CONFIG); fbAuth = firebase.auth(); } catch
 // เรียก Apps Script พร้อมบัตรผ่านของคนที่ล็อกอิน (text/plain = ไม่โดน preflight)
 async function api(action, data){
   const u = fbAuth && fbAuth.currentUser;
-  if (!u) throw new Error("กรุณาเข้าสู่ระบบ");
-  const idToken = await u.getIdToken();
-  const res = await fetch(GAS_URL, {method:"POST", headers:{"Content-Type":"text/plain;charset=utf-8"},
-    body:JSON.stringify(Object.assign({}, data || {}, {action, idToken}))});
-  const j = await res.json();
+  let cred;
+  if (u) cred = {idToken: await u.getIdToken()};
+  else if (AUTH.role==="Viewer" || (action==="me" && viewKeyNow())) cred = {view: viewKeyNow()};
+  else throw new Error("กรุณาเข้าสู่ระบบ");
+  // รอได้นานสุด 60 วินาที (Apps Script ที่ไม่ได้ใช้นานๆ อาจตื่นช้า) แล้วแจ้งว่าช้าเกินไป แทนการค้างไปเรื่อยๆ
+  const ac = new AbortController(), timer = setTimeout(()=>ac.abort(), 60000);
+  let res;
+  try {
+    res = await fetch(GAS_URL, {method:"POST", headers:{"Content-Type":"text/plain;charset=utf-8"}, signal: ac.signal,
+      body:JSON.stringify(Object.assign({}, data || {}, {action}, cred))});
+  } catch(e){ throw new Error(e.name==="AbortError" ? "Apps Script ตอบช้าเกินไป (เกิน 60 วินาที)" : "เชื่อมต่อ Apps Script ไม่ได้"); }
+  finally { clearTimeout(timer); }
+  const j = await res.json().catch(()=>{ throw new Error("Apps Script ตอบกลับผิดรูปแบบ — ลอง Deploy เวอร์ชันใหม่อีกครั้ง"); });
   if (!j.ok && j.code==="login" && action!=="me"){ logout(); throw new Error(j.error); }
   return j;
 }
@@ -2033,30 +2072,49 @@ function applyRole(){
   if (seps.length) seps[seps.length-1].style.display = viewerMode() ? "none" : "";
   let box = document.getElementById("userBox");
   if (!box){ box = document.createElement("div"); box.id = "userBox"; box.className = "user-box"; document.getElementById("sidebar").appendChild(box); }
-  box.innerHTML = `<div class="user-nm" title="${esc(AUTH.email)}">${esc(AUTH.name || AUTH.email)}</div>
+  box.innerHTML = AUTH.role==="Viewer" ? `<div class="user-nm">ผู้บริหาร</div><div class="user-rl">ดูอย่างเดียว (เปิดจากการ์ด LINE)</div>
+    <button class="btn sm" onclick="showLogin()">เข้าสู่ระบบ Admin</button>`
+    : `<div class="user-nm" title="${esc(AUTH.email)}">${esc(AUTH.name || AUTH.email)}</div>
     <div class="user-rl">${isAdmin() ? "ผู้ดูแล (Admin)" : "ผู้ใช้ (ดูอย่างเดียว)"}</div>
     <button class="btn sm" onclick="logout()">ออกจากระบบ</button>`;
 }
 
 document.querySelectorAll(".nav-btn").forEach(b=>{ b.onclick = ()=>go(b.dataset.view); b.hidden = true; });
 document.getElementById("menuToggle").onclick=()=>document.getElementById("sidebar").classList.toggle("open");
-if (!fbAuth) showBlocked("โหลดระบบเข้าสู่ระบบไม่ได้ — ตรวจการเชื่อมต่ออินเทอร์เน็ต แล้วรีเฟรชหน้าเว็บ");
+function enter(j){
+  Object.assign(AUTH, {role:j.role, email:j.email || "", name:j.name || "", viewKey:j.viewKey || ""});
+  document.getElementById("loginGate").hidden = true;
+  applyRole();
+  go("dashboard");
+  loadStore();
+}
+// ไม่ได้ล็อกอิน แต่มีรหัสจากลิงก์ผู้บริหาร → เข้าโหมดดูอย่างเดียว
+async function enterViewer(){
+  showWait("กำลังเปิด Dashboard…");
+  let j;
+  try { j = await api("me"); }
+  catch(e){ return showBlocked("เชื่อมต่อไม่ได้ — ลองรีเฟรชหน้าเว็บ"); }
+  if (!j.ok){
+    try { localStorage.removeItem(VIEW_KEY_LS); } catch(e){} window.VIEW_ONCE = "";
+    return fbAuth ? showLogin(j.error) : showBlocked(j.error);
+  }
+  enter(j);
+}
+if (!fbAuth){ if (viewKeyNow()) enterViewer(); else showBlocked("โหลดระบบเข้าสู่ระบบไม่ได้ — ตรวจการเชื่อมต่ออินเทอร์เน็ต แล้วรีเฟรชหน้าเว็บ"); }
 else {
   showWait("กำลังตรวจสอบการเข้าสู่ระบบ…");
   fbAuth.onAuthStateChanged(async u => {
-    if (!u){ AUTH.role = null; return showLogin(); }
+    if (!u){ AUTH.role = null; return viewKeyNow() ? enterViewer() : showLogin(); }
     showWait("กำลังตรวจสอบสิทธิ์…");
+    AUTH.role = null;
     let j;
     try { j = await api("me"); }
     catch(e){ return showBlocked("เชื่อมต่อ Apps Script ไม่ได้ — ลองรีเฟรชหน้าเว็บ"); }
     if (!j.ok){ if (j.code==="login") return showLogin(j.error); return showBlocked(j.error || "ไม่มีสิทธิ์ใช้งาน"); }
-    Object.assign(AUTH, {role:j.role, email:j.email, name:j.name});
-    document.getElementById("loginGate").hidden = true;
-    applyRole();
-    go("dashboard");
-    loadStore();
+    enter(j);
   });
 }
+
 </script>
 </body>
 </html>
