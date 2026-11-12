@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>ระบบตรวจสอบและแปลงเอกสารภาษี — V35</title>
+<title>ระบบตรวจสอบและแปลงเอกสารภาษี — V36</title>
 <style>
 :root{
   --bg:#0f1318; --panel:#171c23; --panel2:#1e252e; --line:#2b3440;
@@ -407,6 +407,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
 <!-- Firebase Authentication (compat) แบบเดียวกับระบบ PO -->
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
 <script>
 /* ===== ตั้งค่า ===== */
 const WS = {
@@ -716,7 +717,7 @@ function renderViewWorkspace(k){
         <div class="kpi"><span>รวม</span><b>${bs(a[2])}</b></div>
       </div></div>`;
   $view.innerHTML = `<div class="dash-head"><h1>${WS[k].name}</h1><div class="dash-head-r">${monthPicker(k, recs, rec)}</div></div>${load}
-    <p class="sub">ดูอย่างเดียว · ข้อมูลจาก Google Sheet${rec.savedAt ? " บันทึกเมื่อ " + esc(rec.savedAt) : ""}</p>
+    <p class="sub">ดูอย่างเดียว${rec.savedAt ? " บันทึกเมื่อ " + esc(rec.savedAt) : ""}</p>
     <div class="card">
       <div class="card-head"><h2>สรุปภาษี</h2></div>
       <div class="kpis" style="margin-bottom:0">
@@ -743,7 +744,7 @@ function dashSection(k){
     </div>`;
   const prev = recs.find(r=>r.period===prevKey(rec.period)), pl = prev ? shortLabel(prev.period) : "";
   const sv = SAVE_STATUS[k] && rec.local && !rec.savedAt ? SAVE_STATUS[k] : null;
-  const saved = rec.savedAt ? `<span class="saved">☁ บันทึกลง Google Sheet แล้ว ${esc(rec.savedAt)}${rec.savedBy ? " · โดย " + esc(rec.savedBy) : ""}</span>`
+  const saved = rec.savedAt ? `<span class="saved">☁ บันทึกแล้ว ${esc(rec.savedAt)}${rec.savedBy ? " · โดย " + esc(rec.savedBy) : ""}</span>`
     : sv ? `<span class="saved" style="color:${sv.kind==="err" ? "var(--warn)" : "var(--muted)"}">${esc(sv.msg)}</span>`
     : "";
   const picker = monthPicker(k, recs, rec);
@@ -790,9 +791,13 @@ function renderSettings(){
       </div>
     </div>
     <div class="card">
-      <p class="card-title">☁ Google Sheet</p>
-      <p class="hint" style="margin:0 0 12px">อัปโหลดภาษีซื้อและภาษีขายเดือนเดียวกันครบ → บันทึกยอดสรุปลง Google Sheet อัตโนมัติ</p>
+      <p class="card-title">☁ ข้อมูล</p>
+      <p class="hint" style="margin:0 0 12px">ยอดสรุปและใบกำกับเก็บใน Firebase (โหลดเร็ว) และสำรองลง Google Sheet อัตโนมัติเบื้องหลัง</p>
       <div class="hint" id="sheetInfo" style="margin:0">${sheetInfo()}</div>
+      <div class="line-row">
+        <button class="btn sm" id="migBtn" onclick="migrate()">ย้ายข้อมูลเดิมจาก Google Sheet</button>
+        <span class="hint" id="migStatus" style="margin:0">ใช้ครั้งเดียวหลังเปลี่ยนมาใช้ Firebase (ยอดสรุป · ผู้ใช้ · ใบกำกับ)</span>
+      </div>
     </div>
     <div class="card">
       <p class="card-title">🔗 ลิงก์สำหรับผู้บริหาร</p>
@@ -820,6 +825,26 @@ function renderSettings(){
       <span class="hint" id="userStatus"></span>
     </div>`;
   loadUsers();
+  if (!LOAD.sheetUrl) api("info").then(j=>{ if (j.ok && j.sheetUrl){ LOAD.sheetUrl = j.sheetUrl; const el = document.getElementById("sheetInfo"); if (el) el.innerHTML = sheetInfo(); } }).catch(()=>{});
+}
+// ย้ายข้อมูลเดิมจาก Google Sheet (ผ่าน Apps Script) มาไว้ใน Firestore — กดซ้ำได้ ไม่เกิดข้อมูลซ้ำ
+async function migrate(){
+  const st = document.getElementById("migStatus"), btn = document.getElementById("migBtn");
+  const say = (t, kind) => { st.textContent = t; st.style.color = kind==="err" ? "var(--warn)" : kind==="ok" ? "var(--ok)" : "var(--muted)"; };
+  btn.disabled = true; say("กำลังอ่านข้อมูลจาก Google Sheet…");
+  try {
+    const [r, u, v] = await Promise.all([api("list"), api("users"), api("invList")]);
+    if (!r.ok) throw new Error(r.error);
+    const writes = [];
+    for (const x of r.records || []) writes.push([pubRef(AUTH.viewKey).collection("records").doc(x.area + "_" + x.period), Object.assign({}, x, {ts:FS_TS()})]);
+    for (const x of (u.ok ? u.users : []) || []) if (!x.owner) writes.push([db.collection("users").doc(x.email), {name:x.name || "", role:x.role==="Admin" ? "Admin" : "User", added:x.added || ""}]);
+    for (const x of (v.ok ? v.invoices : []) || []) writes.push([db.collection("invoices").doc(x.id), Object.assign({}, x, {img: x.hasImg ? "drive" : "", ts:FS_TS()})]);
+    say("กำลังบันทึก " + writes.length + " รายการ…");
+    for (let i=0;i<writes.length;i+=400){ const bt = db.batch(); writes.slice(i, i+400).forEach(([ref, d])=>bt.set(ref, d, {merge:true})); await bt.commit(); }
+    say(`ย้ายแล้ว: ยอดสรุป ${(r.records||[]).length} เดือน · ผู้ใช้ ${((u.users)||[]).filter(x=>!x.owner).length} คน · ใบกำกับ ${((v.invoices)||[]).length} ใบ`, "ok");
+    dropCache(); loadStore(); loadUsers(); PH.invState = "none";
+  } catch(e){ say("ย้ายไม่สำเร็จ: " + (e.code ? FS_ERR(e) : e.message), "err"); }
+  btn.disabled = false;
 }
 /* ===== ลิงก์ผู้บริหาร ===== */
 function viewSay(t, kind){ const el = document.getElementById("viewStatus"); if (el){ el.textContent = t; el.style.color = kind==="ok" ? "var(--ok)" : kind==="err" ? "var(--warn)" : "var(--muted)"; } }
@@ -828,17 +853,27 @@ let VIEW_ASK = 0;
 async function viewReset(){
   if (Date.now() - VIEW_ASK > 5000){ VIEW_ASK = Date.now(); return viewSay("กด “เปลี่ยนรหัส” อีกครั้งเพื่อยืนยัน — ลิงก์ในการ์ดเก่าทั้งหมดจะเปิดไม่ได้", "err"); }
   VIEW_ASK = 0; viewSay("กำลังเปลี่ยน…");
-  try { const j = await api("viewKeyReset"); if (!j.ok) throw new Error(/ไม่รู้จักคำสั่ง/.test(j.error||"") ? "กรุณาอัปเดต Apps Script เป็น V9" : j.error);
-    AUTH.viewKey = j.viewKey; document.getElementById("viewLinkBox").value = viewLink(); viewSay("เปลี่ยนแล้ว — ลิงก์เก่าใช้ไม่ได้แล้ว", "ok"); }
-  catch(e){ viewSay("เปลี่ยนไม่สำเร็จ: " + e.message, "err"); }
+  try {
+    const old = AUTH.viewKey, key = newKey();
+    const docs = (await pubRef(old).collection("records").get()).docs;
+    await pubRef(key).set({created: FS_TS()});
+    for (let i=0;i<docs.length;i+=400){ const bt = db.batch(); docs.slice(i, i+400).forEach(d=>bt.set(pubRef(key).collection("records").doc(d.id), d.data())); await bt.commit(); }
+    await db.collection("config").doc("view").set({key, updated: FS_TS()});
+    for (let i=0;i<docs.length;i+=400){ const bt = db.batch(); docs.slice(i, i+400).forEach(d=>bt.delete(d.ref)); await bt.commit(); }
+    await pubRef(old).delete();
+    AUTH.viewKey = key; dropCache(); document.getElementById("viewLinkBox").value = viewLink();
+    viewSay("เปลี่ยนแล้ว — ลิงก์เก่าใช้ไม่ได้แล้ว", "ok"); loadStore();
+  } catch(e){ viewSay("เปลี่ยนไม่สำเร็จ: " + FS_ERR(e), "err"); }
 }
 /* ===== จัดการผู้ใช้ (Admin) ===== */
 let USERS = [];
 function userSay(t, kind){ const el = document.getElementById("userStatus"); if (el){ el.textContent = t; el.style.color = kind==="ok" ? "var(--ok)" : kind==="err" ? "var(--warn)" : "var(--muted)"; } }
 async function loadUsers(){
   try {
-    const j = await api("users"); if (!j.ok) throw new Error(j.error);
-    USERS = j.users || []; drawUsers();
+    const list = (await db.collection("users").get()).docs.map(d=>Object.assign({email:d.id}, d.data()))
+      .map(u=>({email:u.email, name:u.name || "", role:u.role==="Admin" ? "Admin" : "User", added:u.added || ""}));
+    for (const o of OWNERS){ const u = list.find(x=>x.email===o); if (u){ u.role = "Admin"; u.owner = true; } else list.unshift({email:o, name:"", role:"Admin", owner:true}); }
+    USERS = list; drawUsers();
   } catch(e){ const el = document.getElementById("userList"); if (el) el.innerHTML = `<span style="color:var(--warn)">โหลดรายชื่อไม่ได้: ${esc(e.message)}</span>`; }
 }
 function drawUsers(){
@@ -866,23 +901,23 @@ async function userAdd(){
     const sec = firebase.apps.find(a=>a.name==="userAdmin") || firebase.initializeApp(FIREBASE_CONFIG, "userAdmin");
     try { if (pass.length < 6) throw {code:"auth/weak-password"}; await sec.auth().createUserWithEmailAndPassword(email, pass); await sec.auth().signOut(); }
     catch(e){ if (e.code !== "auth/email-already-in-use") throw e; note = " (อีเมลนี้มีบัญชีอยู่แล้ว ใช้รหัสผ่านเดิม)"; }
-    const j = await api("userSet", {user:{email, name, role}}); if (!j.ok) throw new Error(j.error);
+    await db.collection("users").doc(email).set({name, role, added: stampBE(), by: AUTH.email});
     ["nuEmail","nuName","nuPass"].forEach(id=>document.getElementById(id).value = "");
     await loadUsers(); userSay("เพิ่ม " + email + " แล้ว" + note, "ok");
-  } catch(e){ userSay("เพิ่มไม่สำเร็จ: " + fbMsg(e), "err"); }
+  } catch(e){ userSay("เพิ่มไม่สำเร็จ: " + (e.code && !/^auth\//.test(e.code) ? FS_ERR(e) : fbMsg(e)), "err"); }
   btn.disabled = false;
 }
 async function userRole(i, role){
   const u = USERS[i]; userSay("กำลังบันทึก…");
-  try { const j = await api("userSet", {user:{email:u.email, name:u.name, role}}); if (!j.ok) throw new Error(j.error); u.role = role; userSay("เปลี่ยนสิทธิ์ " + u.email + " เป็น " + role + " แล้ว", "ok"); }
-  catch(e){ userSay("บันทึกไม่สำเร็จ: " + e.message, "err"); drawUsers(); }
+  try { await db.collection("users").doc(u.email).set({name:u.name || "", role}, {merge:true}); u.role = role; userSay("เปลี่ยนสิทธิ์ " + u.email + " เป็น " + role + " แล้ว", "ok"); }
+  catch(e){ userSay("บันทึกไม่สำเร็จ: " + FS_ERR(e), "err"); drawUsers(); }
 }
 async function userDel(i){
   const u = USERS[i];
   if (!confirmDel(i)) return;
   userSay("กำลังลบ…");
-  try { const j = await api("userDel", {email:u.email}); if (!j.ok) throw new Error(j.error); await loadUsers(); userSay("ลบ " + u.email + " แล้ว — เข้าระบบไม่ได้อีก", "ok"); }
-  catch(e){ userSay("ลบไม่สำเร็จ: " + e.message, "err"); }
+  try { await db.collection("users").doc(u.email).delete(); await loadUsers(); userSay("ลบ " + u.email + " แล้ว — เข้าระบบไม่ได้อีก", "ok"); }
+  catch(e){ userSay("ลบไม่สำเร็จ: " + FS_ERR(e), "err"); }
 }
 const DEL_ASK = {};
 function confirmDel(i){   // กดลบ 2 ครั้งเพื่อยืนยัน (ไม่ใช้ confirm() ของเบราว์เซอร์)
@@ -1279,17 +1314,24 @@ function fromSheet(r){
     buy:toSat(r.buy), sale:toSat(r.sale), pay:Math.round(r.pay*100), excess:Math.round(r.excess*100),
     buyCount:r.buyCount, saleCount:r.saleCount, checks:Array.isArray(r.checks) ? r.checks : [], savedAt:r.savedAt, savedBy:r.savedBy || ""};
 }
+// จำยอดล่าสุดไว้ในเครื่อง เปิดครั้งต่อไปแสดงได้ทันที
+const CACHE_LS = "taxsys_cache_v1";
+function cachedRecords(key){ try { const o = JSON.parse(localStorage.getItem(CACHE_LS) || "null"); return o && o.key===key ? o.records : null; } catch(e){ return null; } }
+function saveCache(key, recs){ try { localStorage.setItem(CACHE_LS, JSON.stringify({key, records:recs})); } catch(e){} }
+function dropCache(){ try { localStorage.removeItem(CACHE_LS); } catch(e){} }
+function fillStore(list){ for (const k in STORE) delete STORE[k]; for (const rec of list || []){ const x = fromSheet(rec); (STORE[x.area] ||= {})[x.period] = x; } }
 async function loadStore(){
-  if (!AUTH.role){ Object.assign(LOAD, {state:"none", msg:""}); return; }
-  Object.assign(LOAD, {state:"loading", msg:"กำลังโหลดยอดจาก Google Sheet…"}); refresh();
+  if (!AUTH.role || !AUTH.viewKey){ Object.assign(LOAD, {state:"none", msg:""}); return; }
+  const key = AUTH.viewKey, cached = cachedRecords(key);
+  if (cached){ fillStore(cached); Object.assign(LOAD, {state:"ok", msg:""}); refresh(); }
+  else { Object.assign(LOAD, {state:"loading", msg:"กำลังโหลดยอด…"}); refresh(); }
   try {
-    const j = await api("list");
-    if (!j.ok) throw new Error(j.error || "โหลดไม่ได้");
-    for (const k in STORE) delete STORE[k];
-    for (const rec of j.records || []){ const x = fromSheet(rec); (STORE[x.area] ||= {})[x.period] = x; }
-    Object.assign(LOAD, {state:"ok", msg:"", sheetUrl:j.sheetUrl || ""});
+    const snap = await pubRef(key).collection("records").get();
+    const list = snap.docs.map(d=>d.data());
+    fillStore(list); saveCache(key, list);
+    Object.assign(LOAD, {state:"ok", msg:""});
   } catch(e){
-    Object.assign(LOAD, {state:"err", msg:"โหลดยอดจาก Google Sheet ไม่ได้: " + (e.message==="Failed to fetch" ? "เชื่อมต่อไม่ได้" : e.message || "เชื่อมต่อไม่ได้")});
+    if (!cached) Object.assign(LOAD, {state:"err", msg:"โหลดยอดไม่ได้: " + FS_ERR(e)});
     console.warn("loadStore", e);
   }
   refresh();
@@ -1303,7 +1345,7 @@ function sheetInfo(){
   if (LOAD.state==="loading") return "กำลังเชื่อมต่อ…";
   if (LOAD.state==="err") return `<span style="color:var(--warn)">${esc(LOAD.msg)}</span>`;
   const n = Object.values(STORE).reduce((a,o)=>a+Object.keys(o).length,0);
-  return `เชื่อมต่อแล้ว · มียอดสรุป ${n} เดือน` + (LOAD.sheetUrl ? ` · <a href="${esc(LOAD.sheetUrl)}" target="_blank" rel="noopener">เปิด Google Sheet</a>` : "");
+  return `เก็บใน Firebase · มียอดสรุป ${n} เดือน` + (LOAD.sheetUrl ? ` · <a href="${esc(LOAD.sheetUrl)}" target="_blank" rel="noopener">เปิด Google Sheet (สำรอง)</a>` : "");
 }
 // รวมยอดจาก Sheet กับยอดที่เพิ่งอัปโหลดในเครื่องนี้ (ของเครื่องนี้ทับเดือนเดียวกัน) เรียงจากเดือนล่าสุด
 const sameNums = (a,b) => a && b && ["buy","sale"].every(x=>a[x].join()===b[x].join()) && a.pay===b.pay;
@@ -1320,21 +1362,23 @@ function setSave(k, msg, kind){
 const recSig = r => [r.period, r.buy.join(), r.sale.join(), r.pay, JSON.stringify(r.checks)].join("|");
 async function autoSave(k){
   const rec = localRecord(k);
-  if (!isAdmin() || !rec) return;
+  if (!isAdmin() || !rec || !AUTH.viewKey) return;
   if (LAST_SAVED[k] === recSig(rec)) return;
   LAST_SAVED[k] = recSig(rec);
-  setSave(k, "กำลังบันทึกยอดลง Google Sheet…");
+  setSave(k, "กำลังบันทึกยอด…");
   const b = x => x/100;
-  const body = {record:{area:rec.area, areaName:rec.areaName, period:rec.period, label:rec.label,
-    buy:rec.buy.map(b), sale:rec.sale.map(b), pay:b(rec.pay), excess:b(rec.excess), buyCount:rec.buyCount, saleCount:rec.saleCount, checks:rec.checks}};
+  const record = {area:rec.area, areaName:rec.areaName, period:rec.period, label:rec.label,
+    buy:rec.buy.map(b), sale:rec.sale.map(b), pay:b(rec.pay), excess:b(rec.excess), buyCount:rec.buyCount, saleCount:rec.saleCount, checks:rec.checks};
+  const savedAt = stampBE(), savedBy = AUTH.name || AUTH.email;
   try {
-    const j = await api("save", body);
-    if (!j.ok) throw new Error(j.error || "บันทึกไม่ได้");
-    (STORE[k] ||= {})[rec.period] = Object.assign({}, rec, {local:false, savedAt:j.savedAt, savedBy:j.savedBy || ""});
-    setSave(k, `☁ บันทึกยอด ${rec.label} ลง Google Sheet แล้ว (${j.savedAt})`, "ok");
+    await pubRef(AUTH.viewKey).collection("records").doc(rec.area + "_" + rec.period).set(Object.assign({}, record, {savedAt, savedBy, ts:FS_TS()}));
+    (STORE[k] ||= {})[rec.period] = Object.assign({}, rec, {local:false, savedAt, savedBy});
+    saveCache(AUTH.viewKey, Object.values(STORE).flatMap(o=>Object.values(o)).map(r=>Object.assign({}, r, {buy:r.buy.map(b), sale:r.sale.map(b), pay:b(r.pay), excess:b(r.excess)})));
+    setSave(k, `☁ บันทึกยอด ${rec.label} แล้ว (${savedAt})`, "ok");
+    backup("save", {record});   // สำรองลง Google Sheet เบื้องหลัง
   } catch(e){
     LAST_SAVED[k] = null;
-    setSave(k, "บันทึกลง Google Sheet ไม่สำเร็จ: " + (e.message==="Failed to fetch" ? "เชื่อมต่อไม่ได้" : e.message), "err");
+    setSave(k, "บันทึกไม่สำเร็จ: " + FS_ERR(e), "err");
   }
 }
 
@@ -1807,7 +1851,7 @@ function phSavedCard(){
   const sum = k => rows.reduce((a,x)=>a + Math.round(x[k]*100), 0);
   const load = PH.invState==="loading" ? `<p class="hint">กำลังโหลดรายการ…</p>` : PH.invState==="err" ? `<p class="hint" style="color:var(--warn)">${esc(PH.invMsg)}</p>` : "";
   return `<div class="card">
-    <div class="card-head"><div><h2>ใบกำกับที่บันทึกแล้ว</h2><p>เก็บใน Google Sheet แท็บ “ใบกำกับภาษีซื้อ” · รูปเก็บใน Google Drive</p></div>
+    <div class="card-head"><div><h2>ใบกำกับที่บันทึกแล้ว</h2><p>เก็บใน Firebase · สำรองลง Google Sheet แท็บ “ใบกำกับภาษีซื้อ” และรูปใน Google Drive</p></div>
       ${months.length ? `<select class="month-sel" onchange="PH.month=this.value;rerenderPhoto()">${months.map(p=>`<option value="${p}" ${p===PH.month ? "selected" : ""}>ภาษีเดือน ${pLabel(p)}</option>`).join("")}</select>` : ""}</div>
     ${load}
     ${rows.length ? `<div class="table-wrap"><table class="inv-table">
@@ -1909,18 +1953,22 @@ function bindDraw(){
 async function phLoadList(){
   PH.invState = "loading";
   try {
-    const j = await api("invList"); if (!j.ok) throw new Error(j.error);
-    PH.inv = j.invoices || []; PH.invState = "ok";
-  } catch(e){
-    PH.invState = "err"; PH.invMsg = "โหลดรายการไม่ได้: " + (/ไม่รู้จักคำสั่ง/.test(e.message) ? "กรุณาอัปเดต Apps Script เป็น V7" : e.message);
-  }
+    PH.inv = (await db.collection("invoices").get()).docs.map(d=>Object.assign({}, d.data(), {id:d.id}));
+    PH.invState = "ok";
+  } catch(e){ PH.invState = "err"; PH.invMsg = "โหลดรายการไม่ได้: " + FS_ERR(e); }
   rerenderPhoto();
 }
-function jpegOf(it){
-  const k = Math.min(1, 1800 / Math.max(it.base.width, it.base.height));
+function jpegOf(it, max, q){
+  max = max || 1800; q = q || 0.82;
+  const k = Math.min(1, max / Math.max(it.base.width, it.base.height));
   const c = document.createElement("canvas"); c.width = Math.round(it.base.width*k); c.height = Math.round(it.base.height*k);
   c.getContext("2d").drawImage(it.base, 0, 0, c.width, c.height);
-  return c.toDataURL("image/jpeg", 0.82);
+  return c.toDataURL("image/jpeg", q);
+}
+// รูปเก็บใน Firestore ได้ไม่เกิน ~1 MB ต่อเอกสาร: ลดขนาดจนพอดี
+function jpegSmall(it){
+  for (const [m, q] of [[1800,.8],[1600,.72],[1400,.65],[1200,.6],[1000,.55]]){ const d = jpegOf(it, m, q); if (d.length < 900000) return d; }
+  return jpegOf(it, 900, .5);
 }
 async function phSave(){
   const it = curItem(); if (!it) return;
@@ -1933,16 +1981,19 @@ async function phSave(){
   const inv = {id: it.savedId || "", period: f.period, date: f.date, no: f.no, ref: f.ref || "", sellerName: f.sellerName || "", sellerTax: f.sellerTax || "",
     branch: f.branch || "", value: b(f.value), vat: b(f.vat), total: b(f.total), status: bad ? "ต้องตรวจ: " + cs.filter(c=>!c.ok).map(c=>c.label).join(" / ") : "ผ่าน"};
   try {
-    const j = await api("invSave", {inv, image: it.savedId ? null : jpegOf(it)});
-    if (!j.ok) throw new Error(/ไม่รู้จักคำสั่ง/.test(j.error||"") ? "กรุณาอัปเดต Apps Script เป็น V7" : j.error);
-    const rec = Object.assign({}, inv, {id: j.id, savedAt: j.savedAt, savedBy: j.savedBy, hasImg: j.hasImg});
-    PH.inv = PH.inv.filter(x=>x.id !== j.id).concat(rec);
-    it.savedId = j.id; it.status = "saved"; PH.month = inv.period;
+    const id = it.savedId || db.collection("invoices").doc().id, savedAt = stampBE(), savedBy = AUTH.name || AUTH.email;
+    const image = it.savedId ? null : jpegSmall(it);
+    if (image) await db.collection("invoiceImages").doc(id).set({data:image});
+    const rec = Object.assign({}, inv, {id, savedAt, savedBy, hasImg: true, img: "fs"});
+    await db.collection("invoices").doc(id).set(Object.assign({}, rec, {ts:FS_TS()}), {merge:true});
+    backup("invSave", {inv: Object.assign({}, inv, {id}), image});   // สำรองลง Google Sheet + Drive เบื้องหลัง
+    PH.inv = PH.inv.filter(x=>x.id !== id).concat(rec);
+    it.savedId = id; it.status = "saved"; PH.month = inv.period;
     const next = PH.items.findIndex(x=>x.status!=="saved" && x.status!=="err");
     if (next >= 0) PH.cur = next;
     rerenderPhoto();
     const m2 = document.getElementById("phListMsg"); if (m2){ m2.textContent = "บันทึกใบเลขที่ " + inv.no + " แล้ว"; m2.style.color = "var(--ok)"; }
-  } catch(e){ say("บันทึกไม่สำเร็จ: " + (e.message==="Failed to fetch" ? "เชื่อมต่อไม่ได้" : e.message), "err"); btn.disabled = false; }
+  } catch(e){ say("บันทึกไม่สำเร็จ: " + FS_ERR(e), "err"); btn.disabled = false; }
 }
 const PH_DEL = {};
 async function phDel(id){
@@ -1951,15 +2002,20 @@ async function phDel(id){
   const say = (t, kind) => { if (m){ m.textContent = t; m.style.color = kind==="err" ? "var(--warn)" : kind==="ok" ? "var(--ok)" : "var(--muted)"; } };
   if (!(PH_DEL[id] && Date.now() - PH_DEL[id] < 5000)){ PH_DEL[id] = Date.now(); return say("กด “ลบ” อีกครั้งเพื่อยืนยันการลบใบเลขที่ " + x.no, "err"); }
   delete PH_DEL[id]; say("กำลังลบ…");
-  try { const j = await api("invDel", {id}); if (!j.ok) throw new Error(j.error);
+  try { await db.collection("invoices").doc(id).delete(); db.collection("invoiceImages").doc(id).delete().catch(()=>{});
+    backup("invDel", {id});
     PH.inv = PH.inv.filter(r=>r.id!==id); PH.items.forEach(it=>{ if (it.savedId===id){ it.savedId = null; it.status = "ready"; } });
     rerenderPhoto(); }
-  catch(e){ say("ลบไม่สำเร็จ: " + e.message, "err"); }
+  catch(e){ say("ลบไม่สำเร็จ: " + FS_ERR(e), "err"); }
 }
 async function phImg(id){
   phModal(`<p class="hint">กำลังโหลดรูป…</p>`);
-  try { const j = await api("invImg", {id}); if (!j.ok) throw new Error(j.error); phModal(`<img src="${j.dataUrl}" alt="รูปใบกำกับ">`); }
-  catch(e){ phModal(`<p class="err">${esc(e.message)}</p>`); }
+  try {
+    const s = await db.collection("invoiceImages").doc(id).get();
+    let src = s.exists ? s.data().data : null;
+    if (!src){ const j = await api("invImg", {id}); if (!j.ok) throw new Error(j.error); src = j.dataUrl; }   // ใบที่ย้ายมาจากระบบเดิม รูปอยู่ใน Google Drive
+    phModal(`<img src="${src}" alt="รูปใบกำกับ">`);
+  } catch(e){ phModal(`<p class="err">${esc(e.code ? FS_ERR(e) : e.message)}</p>`); }
 }
 function phExcel(){
   const rows = PH.inv.filter(x=>x.period===PH.month).sort((a,b)=>a.date.split("/").reverse().join().localeCompare(b.date.split("/").reverse().join()));
@@ -1978,8 +2034,9 @@ function phExcel(){
 
 
 
-/* ===== เข้าสู่ระบบ (Firebase Authentication แบบเดียวกับ PO) =====
-   ค่า firebaseConfig ไม่ใช่รหัสลับ ใส่ในหน้าเว็บได้ (ความปลอดภัยอยู่ที่บัญชี/รหัสผ่าน และ Apps Script ตรวจสิทธิ์ทุกคำขอ) */
+/* ===== เข้าสู่ระบบ + ฐานข้อมูล (Firebase Authentication + Firestore แบบเดียวกับ PO) =====
+   ค่า firebaseConfig ไม่ใช่รหัสลับ ใส่ในหน้าเว็บได้ — ความปลอดภัยอยู่ที่บัญชี/รหัสผ่าน และกฎ (Rules) ของ Firestore
+   Apps Script เหลือหน้าที่: ส่ง LINE + สำรองข้อมูลลง Google Sheet/Drive (ทำเบื้องหลัง ไม่ต้องรอ) */
 const FIREBASE_CONFIG = {
   apiKey: "AIzaSyAMPhpldWKbgGhhU-pdViKx3YJbbEhNHvU",
   authDomain: "chan-tax.firebaseapp.com",
@@ -1988,9 +2045,23 @@ const FIREBASE_CONFIG = {
   messagingSenderId: "428151893403",
   appId: "1:428151893403:web:3cb73c65e1c576c610053e"
 };
-// ลิงก์ Apps Script (ลงท้ายด้วย /exec — ไม่ต้องมี ?key=)
+const OWNERS = ["admintax@gmail.com"];           // Admin หลัก (ต้องตรงกับใน Firestore Rules)
+// ลิงก์ Apps Script (ลงท้ายด้วย /exec)
 const GAS_URL = "https://script.google.com/macros/s/AKfycbygd3zyjrzAaVRmoLlCfX64XCxvy663paxIFwjvkRzpPmQbvYz0YpwgPRlkduAQ6BqU/exec";
 const AUTH = {role:null, email:"", name:"", viewKey:""};
+const isAdmin = () => AUTH.role === "Admin";
+let fbAuth = null, db = null;
+try { firebase.initializeApp(FIREBASE_CONFIG); fbAuth = firebase.auth(); db = firebase.firestore(); } catch(e){ fbAuth = null; db = null; }
+const FS_TS = () => firebase.firestore.FieldValue.serverTimestamp();
+function stampBE(){ const d = new Date(); return pad2(d.getDate()) + "/" + pad2(d.getMonth()+1) + "/" + (d.getFullYear()+543) + " " + pad2(d.getHours()) + ":" + pad2(d.getMinutes()); }
+const FS_ERR = e => {
+  const c = e && e.code;
+  if (c==="permission-denied") return "ไม่มีสิทธิ์เข้าถึงข้อมูล (ตรวจ Rules ของ Firestore)";
+  if (c==="not-found" || /database .*does not exist/i.test(e && e.message)) return "ยังไม่ได้สร้างฐานข้อมูล Firestore ในโปรเจกต์ chan-tax";
+  if (c==="unavailable") return "เชื่อมต่อฐานข้อมูลไม่ได้ — ตรวจอินเทอร์เน็ต";
+  return (e && e.message) || "เกิดข้อผิดพลาด";
+};
+
 // ลิงก์ผู้บริหาร (#view=รหัส จากปุ่ม "เปิดดูบนเว็บ" ในการ์ด LINE): จำรหัสไว้ในเครื่อง แล้วลบออกจากแถบที่อยู่
 const VIEW_KEY_LS = "taxsys_view_v2";
 const viewStored = () => { try { return localStorage.getItem(VIEW_KEY_LS) || ""; } catch(e){ return ""; } };
@@ -2000,18 +2071,14 @@ const viewStored = () => { try { return localStorage.getItem(VIEW_KEY_LS) || "";
 })();
 const viewKeyNow = () => window.VIEW_ONCE || viewStored();
 const viewLink = () => AUTH.viewKey ? SITE_URL + "#view=" + encodeURIComponent(AUTH.viewKey) : SITE_URL;
-const isAdmin = () => AUTH.role === "Admin";
-let fbAuth = null;
-try { firebase.initializeApp(FIREBASE_CONFIG); fbAuth = firebase.auth(); } catch(e){ fbAuth = null; }
+const pubRef = key => db.collection("pub").doc(key);
+const newKey = () => { const a = new Uint8Array(18); crypto.getRandomValues(a); return Array.from(a, b=>b.toString(16).padStart(2,"0")).join(""); };
 
-// เรียก Apps Script พร้อมบัตรผ่านของคนที่ล็อกอิน (text/plain = ไม่โดน preflight)
+// เรียก Apps Script (ส่ง LINE / สำรองลง Sheet) พร้อมบัตรผ่านของคนที่ล็อกอิน (text/plain = ไม่โดน preflight)
 async function api(action, data){
   const u = fbAuth && fbAuth.currentUser;
-  let cred;
-  if (u) cred = {idToken: await u.getIdToken()};
-  else if (AUTH.role==="Viewer" || (action==="me" && viewKeyNow())) cred = {view: viewKeyNow()};
-  else throw new Error("กรุณาเข้าสู่ระบบ");
-  // รอได้นานสุด 60 วินาที (Apps Script ที่ไม่ได้ใช้นานๆ อาจตื่นช้า) แล้วแจ้งว่าช้าเกินไป แทนการค้างไปเรื่อยๆ
+  if (!u) throw new Error("กรุณาเข้าสู่ระบบ");
+  const cred = {idToken: await u.getIdToken()};
   const ac = new AbortController(), timer = setTimeout(()=>ac.abort(), 60000);
   let res;
   try {
@@ -2019,9 +2086,30 @@ async function api(action, data){
       body:JSON.stringify(Object.assign({}, data || {}, {action}, cred))});
   } catch(e){ throw new Error(e.name==="AbortError" ? "Apps Script ตอบช้าเกินไป (เกิน 60 วินาที)" : "เชื่อมต่อ Apps Script ไม่ได้"); }
   finally { clearTimeout(timer); }
-  const j = await res.json().catch(()=>{ throw new Error("Apps Script ตอบกลับผิดรูปแบบ — ลอง Deploy เวอร์ชันใหม่อีกครั้ง"); });
-  if (!j.ok && j.code==="login" && action!=="me"){ logout(); throw new Error(j.error); }
-  return j;
+  return await res.json().catch(()=>{ throw new Error("Apps Script ตอบกลับผิดรูปแบบ — ลอง Deploy เวอร์ชันใหม่อีกครั้ง"); });
+}
+// สำรองลง Google Sheet เบื้องหลัง (ไม่ต้องรอ ถ้าไม่สำเร็จไม่กระทบการใช้งาน)
+function backup(action, data){ api(action, data).then(j=>{ if (!j.ok) console.warn("backup", action, j.error); }).catch(e=>console.warn("backup", action, e.message)); }
+
+// สิทธิ์ของผู้ใช้: Admin หลัก (OWNERS) หรือเอกสาร users/{อีเมล} ใน Firestore
+async function fsRole(u){
+  const email = String(u.email || "").toLowerCase(), owner = OWNERS.includes(email);
+  let d = null;
+  try { const s = await db.collection("users").doc(email).get(); if (s.exists) d = s.data(); }
+  catch(e){ if (!owner || e.code!=="permission-denied") return {ok:false, error:FS_ERR(e)}; }
+  if (owner) return {ok:true, role:"Admin", email, name:(d && d.name) || email};
+  if (!d) return {ok:false, code:"norole", error:"บัญชี " + email + " ยังไม่ได้รับสิทธิ์ใช้งาน กรุณาติดต่อผู้ดูแล"};
+  return {ok:true, role: d.role==="Admin" ? "Admin" : "User", email, name: d.name || email};
+}
+// รหัสดูข้อมูล (เก็บใน config/view) — ยอดสรุปเก็บที่ pub/{รหัส}/records ผู้บริหารที่มีลิงก์อ่านได้อย่างเดียว
+async function ensureViewKey(){
+  const ref = db.collection("config").doc("view"), s = await ref.get();
+  if (s.exists && s.data().key) return s.data().key;
+  if (!isAdmin()) throw new Error("ยังไม่ได้ตั้งค่าระบบ — ให้ Admin เข้าสู่ระบบก่อน 1 ครั้ง");
+  const key = newKey();
+  await pubRef(key).set({created: FS_TS()});
+  await ref.set({key, updated: FS_TS()});
+  return key;
 }
 
 function loginBox(inner){
@@ -2090,27 +2178,30 @@ function enter(j){
 }
 // ไม่ได้ล็อกอิน แต่มีรหัสจากลิงก์ผู้บริหาร → เข้าโหมดดูอย่างเดียว
 async function enterViewer(){
-  showWait("กำลังเปิด Dashboard…");
-  let j;
-  try { j = await api("me"); }
-  catch(e){ return showBlocked("เชื่อมต่อไม่ได้ — ลองรีเฟรชหน้าเว็บ"); }
-  if (!j.ok){
+  const key = viewKeyNow();
+  if (cachedRecords(key)) enter({role:"Viewer", name:"ผู้บริหาร", viewKey:key});   // เคยเปิดแล้ว: แสดงยอดที่จำไว้ทันที แล้วอัปเดตตามมา
+  else showWait("กำลังเปิด Dashboard…");
+  let ok = false;
+  try { ok = (await pubRef(key).get()).exists; }
+  catch(e){ if (AUTH.role) return; return showBlocked(FS_ERR(e)); }
+  if (!ok){
     try { localStorage.removeItem(VIEW_KEY_LS); } catch(e){} window.VIEW_ONCE = "";
-    return fbAuth ? showLogin(j.error) : showBlocked(j.error);
+    AUTH.role = null; dropCache(key);
+    return showLogin("ลิงก์นี้ใช้ไม่ได้แล้ว กรุณาเปิดจากการ์ด LINE ล่าสุด");
   }
-  enter(j);
+  if (!AUTH.role) enter({role:"Viewer", name:"ผู้บริหาร", viewKey:key});
 }
-if (!fbAuth){ if (viewKeyNow()) enterViewer(); else showBlocked("โหลดระบบเข้าสู่ระบบไม่ได้ — ตรวจการเชื่อมต่ออินเทอร์เน็ต แล้วรีเฟรชหน้าเว็บ"); }
+if (!fbAuth || !db) showBlocked("โหลดระบบเข้าสู่ระบบไม่ได้ — ตรวจการเชื่อมต่ออินเทอร์เน็ต แล้วรีเฟรชหน้าเว็บ");
 else {
   showWait("กำลังตรวจสอบการเข้าสู่ระบบ…");
   fbAuth.onAuthStateChanged(async u => {
-    if (!u){ AUTH.role = null; return viewKeyNow() ? enterViewer() : showLogin(); }
+    if (!u){ if (AUTH.role!=="Viewer") AUTH.role = null; return AUTH.role ? null : viewKeyNow() ? enterViewer() : showLogin(); }
     showWait("กำลังตรวจสอบสิทธิ์…");
     AUTH.role = null;
-    let j;
-    try { j = await api("me"); }
-    catch(e){ return showBlocked("เชื่อมต่อ Apps Script ไม่ได้ — ลองรีเฟรชหน้าเว็บ"); }
-    if (!j.ok){ if (j.code==="login") return showLogin(j.error); return showBlocked(j.error || "ไม่มีสิทธิ์ใช้งาน"); }
+    const j = await fsRole(u);
+    if (!j.ok) return showBlocked(j.error || "ไม่มีสิทธิ์ใช้งาน");
+    AUTH.role = j.role;
+    try { j.viewKey = await ensureViewKey(); } catch(e){ AUTH.role = null; return showBlocked(e.code ? FS_ERR(e) : e.message); }
     enter(j);
   });
 }
