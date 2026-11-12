@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>ระบบตรวจสอบและแปลงเอกสารภาษี — V40</title>
+<title>ระบบตรวจสอบและแปลงเอกสารภาษี — V42</title>
 <style>
 :root{
   --bg:#0f1318; --panel:#171c23; --panel2:#1e252e; --line:#2b3440;
@@ -307,6 +307,8 @@ tr.net td,.sum-table tr.pay td,.sum-table tr.excess td{background:#EAF1FA}
 .cancel-row td{background:rgba(198,40,40,.05)}
 .check-list li.cancel-li{background:#FDECEA;color:#C62828}
 .sum-block{margin-top:16px;padding-top:14px;border-top:1px solid var(--line)}.sum-block .fin.sm{width:auto;padding:5px 8px}
+.year-table td.pay{font-weight:700;color:var(--accent)}.year-table td a{font-weight:600;text-decoration:none}.cancel-chip{background:#FDECEA;color:#C62828}
+.year-table tbody tr:not(.pay) td:nth-child(3){color:var(--text);font-weight:400}.year-table tr.pay td{color:var(--accent)}h2 + .sum-block{margin-top:0;padding-top:0;border-top:0}
 </style>
 </head>
 <body>
@@ -734,9 +736,12 @@ function trendCard(k, recs){
 }
 const shortLabel = key => { const [y,m] = key.split("-").map(Number); return ["ม.ค.","ก.พ.","มี.ค.","เม.ย.","พ.ค.","มิ.ย.","ก.ค.","ส.ค.","ก.ย.","ต.ค.","พ.ย.","ธ.ค."][m-1] + " " + String(y).slice(2); };
 function dashSel(k, p){ SEL[k] = p; current===k ? renderViewWorkspace(k) : renderDashboard(); }
-function monthPicker(k, recs, rec){
+// ปีที่มีข้อมูลตั้งแต่ 2 เดือนขึ้นไป → เลือกดู "รวมทั้งปี" ได้ (เฉพาะหน้า Dashboard)
+const yearsOf = recs => [...new Set(recs.map(r=>r.period.slice(0,4)))].map(y=>({y, n:recs.filter(r=>r.period.startsWith(y)).length})).filter(x=>x.n > 1);
+function monthPicker(k, recs, rec, withYear){
+  const ys = withYear ? yearsOf(recs) : [], cur = SEL[k] || (rec && rec.period);
   return recs.length > 1
-    ? `<select class="month-sel" onchange="dashSel('${k}', this.value)">${recs.map(r=>`<option value="${r.period}" ${r.period===rec.period ? "selected" : ""}>ภาษีเดือน ${esc(r.label)}</option>`).join("")}</select>`
+    ? `<select class="month-sel" onchange="dashSel('${k}', this.value)">${ys.map(x=>`<option value="Y${x.y}" ${cur==="Y"+x.y ? "selected" : ""}>ยอดรวมทั้งหมด${ys.length > 1 ? " ปี " + x.y : ""}</option>`).join("")}${recs.map(r=>`<option value="${r.period}" ${cur===r.period ? "selected" : ""}>ภาษีเดือน ${esc(r.label)}</option>`).join("")}</select>`
     : `<span class="chip info">ภาษีเดือน ${esc(rec.label)}</span>`;
 }
 // หน้า Chan Leasing ในโหมดดูอย่างเดียว: แสดงยอดของเดือนที่เลือกจาก Google Sheet ไม่มีอัปโหลด/ส่ง LINE
@@ -784,7 +789,9 @@ function cancelCard(rec){
   </div>`;
 }
 function dashSection(k){
-  const recs = records(k), rec = selRec(k);
+  const recs = records(k);
+  if (/^Y\d{4}$/.test(SEL[k] || "") && recs.filter(r=>r.period.startsWith(SEL[k].slice(1))).length > 1) return yearSection(k, SEL[k].slice(1), recs);
+  const rec = selRec(k);
   if (rec) SEL[k] = rec.period;
   const load = LOAD.state==="loading" ? `<p class="hint"><span class="spin sm"></span> ${esc(LOAD.msg)}</p>` : LOAD.state==="err" ? `<p class="hint" style="color:var(--warn)">${esc(LOAD.msg)} · <a href="#" onclick="loadStore();return false">ลองใหม่</a></p>` : "";
   const partial = hasData(k) && !localRecord(k) ? `<p class="hint">อัปโหลดในเครื่องนี้ยังไม่ครบ · <a href="#" onclick="go('${k}');return false">ไปอัปโหลดไฟล์ที่ ${WS[k].name} →</a></p>` : "";
@@ -799,7 +806,7 @@ function dashSection(k){
   const saved = rec.savedAt ? `<span class="saved">☁ บันทึกแล้ว ${esc(rec.savedAt)}${rec.savedBy ? " · โดย " + esc(rec.savedBy) : ""}</span>`
     : sv ? `<span class="saved" style="color:${sv.kind==="err" ? "var(--warn)" : "var(--muted)"}">${esc(sv.msg)}</span>`
     : "";
-  const picker = monthPicker(k, recs, rec);
+  const picker = monthPicker(k, recs, rec, true);
   const row = (label, a) => `<tr><td>${label}</td><td class="num">${bs(a[0])}</td><td class="num">${bs(a[1])}</td><td class="num">${bs(a[2])}</td></tr>`;
   return `<div class="dash-head"><h1>Dashboard · ${WS[k].name}</h1><div class="dash-head-r">${saved}${picker}</div></div>${load}${partial}
     <div class="kpis">
@@ -822,6 +829,46 @@ function dashSection(k){
       ${isAdmin() ? `<div class="card"><h2 style="margin-bottom:10px">แจ้งเตือน LINE</h2>${dashLine(k, rec)}</div>` : ""}
     </div>
     ${cancelCard(rec)}`;   /* เครื่องที่เปิดดูอย่างเดียว (ผู้บริหาร) ไม่แสดงส่วนส่ง LINE */
+}
+// Dashboard แบบรวมทั้งปี: ยอดรวม + ตารางรายเดือน (กดเดือนเพื่อดูรายละเอียด)
+function yearSection(k, y, recs){
+  const list = recs.filter(r=>r.period.startsWith(y)).sort((a,b)=>a.period.localeCompare(b.period));
+  const sum = f => list.reduce((a,r)=>a + f(r), 0);
+  const tb = sum(r=>r.buy[1]), ts = sum(r=>r.sale[1]), tp = sum(r=>r.pay), tx = sum(r=>r.excess);
+  const bad = list.filter(r=>r.checks.some(c=>!c.ok)), cancels = list.flatMap(r=>r.cancels || []);
+  const first = list[0].period, last = list[list.length-1].period;
+  const range = MONTHS[+first.slice(5)-1] + " – " + pLabel(last);
+  if (isAdmin() && (!SUM_RANGE[k] || !SUM_RANGE[k].from.startsWith(y))) SUM_RANGE[k] = {from:first, to:last};
+  const load = LOAD.state==="err" ? `<p class="hint" style="color:var(--warn)">${esc(LOAD.msg)} · <a href="#" onclick="loadStore();return false">ลองใหม่</a></p>` : "";
+  return `<div class="dash-head"><h1>Dashboard · ${WS[k].name}</h1><div class="dash-head-r">${monthPicker(k, recs, null, true)}</div></div>${load}
+    <p class="sub" style="margin-top:-8px">ยอดรวมทั้งหมด ${esc(range)}</p>
+    <div class="kpis">
+      <div class="kpi big"><span>ภาษีซื้อรวม</span><b>${bs(tb)}</b><small>${num(sum(r=>r.buyCount))} รายการ</small></div>
+      <div class="kpi big"><span>ภาษีขายรวม</span><b>${bs(ts)}</b><small>${num(sum(r=>r.saleCount))} ใบ</small></div>
+      <div class="kpi big result"><span>ภาษีที่ต้องจ่าย ภ.พ.30 รวม</span><b>${bs(tp)}</b>
+        <small>รวมยอดที่ต้องจ่ายของแต่ละเดือน${tx ? " · ภาษีซื้อเกินรวม " + bs(tx) : ""}</small></div>
+    </div>
+    ${trendCard(k, list.slice().reverse())}
+    <div class="card">
+      <div class="card-head"><h2>สรุปรายเดือน</h2><p>กดชื่อเดือนเพื่อดูรายละเอียด</p></div>
+      <div class="table-wrap"><table class="sum-table year-table">
+        <thead><tr><th>เดือนภาษี</th><th class="num">ภาษีซื้อ</th><th class="num">ภาษีขาย</th><th class="num">ต้องจ่าย ภ.พ.30</th><th class="num">ภาษีซื้อเกิน</th><th>ผลตรวจ</th></tr></thead>
+        <tbody>${list.map(r=>{ const nb = r.checks.filter(c=>!c.ok).length, nc = (r.cancels||[]).length;
+          return `<tr><td><a href="#" onclick="dashSel('${k}','${r.period}');return false">${esc(r.label || pLabel(r.period))}</a></td>
+            <td class="num">${bs(r.buy[1])}</td><td class="num">${bs(r.sale[1])}</td><td class="num pay">${bs(r.pay)}</td><td class="num">${r.excess ? bs(r.excess) : "—"}</td>
+            <td>${nb ? `<span class="chip warn">⚠ ${nb} รายการ</span>` : `<span class="chip ok">✓ ผ่าน</span>`}${nc ? ` <span class="chip cancel-chip">ยกเลิก ${nc} ใบ</span>` : ""}</td></tr>`; }).join("")}
+          <tr class="pay"><td>รวมทั้งหมด</td><td class="num">${bs(tb)}</td><td class="num">${bs(ts)}</td><td class="num">${bs(tp)}</td><td class="num">${tx ? bs(tx) : "—"}</td><td></td></tr></tbody>
+      </table></div>
+    </div>
+    <div class="${isAdmin() ? "grid2" : ""}">
+      <div class="card"><h2 style="margin-bottom:10px">สถานะการตรวจ</h2>
+        <ul class="check-list">
+          <li class="${bad.length ? "bad" : "ok"}">${bad.length ? `⚠ ${bad.length} เดือนที่ต้องตรวจ: ${bad.map(r=>esc(shortLabel(r.period))).join(", ")}` : `✓ ตรวจแล้ว: ยอดทุกเดือนตรงกับรายงาน`}</li>
+          ${cancels.length ? `<li class="ok cancel-li">ใบกำกับที่ยกเลิก ${num(cancels.length)} ใบ ไม่นับยอด</li>` : ""}
+        </ul></div>
+      ${isAdmin() ? `<div class="card"><h2 style="margin-bottom:10px">แจ้งเตือน LINE</h2>${sumBlock(k) || '<p class="hint">ต้องมีข้อมูลอย่างน้อย 2 เดือน</p>'}</div>` : ""}
+    </div>
+    ${cancelCard({cancels})}`;
 }
 function renderDashboard(){
   const keys = Object.keys(WS).filter(k=>!WS[k].hidden);
@@ -1470,11 +1517,11 @@ function sumBlock(k){
   const sel = SUM_RANGE[k] || (SUM_RANGE[k] = {from: ps.find(p=>p.slice(0,4)===last.slice(0,4)) || ps[0], to: last});
   const opt = v => ps.map(p=>`<option value="${p}" ${p===v ? "selected" : ""}>${esc(shortLabel(p))}</option>`).join("");
   return `<div class="sum-block">
-    <b>สรุปรวมหลายเดือน</b>
+    <b>ยอดรวมทั้งหมด</b>
     <div class="line-row">
       <select class="fin sm" onchange="SUM_RANGE['${k}'].from=this.value">${opt(sel.from)}</select> ถึง
       <select class="fin sm" onchange="SUM_RANGE['${k}'].to=this.value">${opt(sel.to)}</select>
-      <button class="btn sm" id="ssend-${k}" onclick="sumAsk('${k}')">ส่งสรุปรวมเข้า LINE</button>
+      <button class="btn sm" id="ssend-${k}" onclick="sumAsk('${k}')">ส่งยอดรวมเข้า LINE</button>
     </div>
     <div class="send-confirm" id="sconf-${k}" hidden><span id="sconfText-${k}"></span>
       <div><button class="btn primary sm" onclick="sumSendNow('${k}')">ยืนยันส่ง</button> <button class="btn sm" onclick="sumCancel('${k}')">ยกเลิก</button></div></div>
@@ -1493,7 +1540,7 @@ function sumData(k){
   const nc = cx.reduce((a,r)=>a + r.cancels.length, 0);
   const first = recs[0].period, last = recs[recs.length-1].period;
   const range = first.slice(0,4)===last.slice(0,4) ? MONTHS[+first.slice(5)-1] + " – " + pLabel(last) : pLabel(first) + " – " + pLabel(last);
-  return {name: WS[k].name, range: range + ` (${recs.length} เดือน)`, n: recs.length,
+  return {name: WS[k].name, range, n: recs.length,
     rows: recs.map(r=>({m: shortLabel(r.period).split(" ")[0], label: pLabel(r.period), buy: bs(r.buy[1]), sale: bs(r.sale[1]), pay: bs(r.pay), excess: r.excess ? bs(r.excess) : "", cancel: (r.cancels||[]).length > 0})),
     buy: bs(tb), sale: bs(ts), pay: bs(tp), ok: !bad.length,
     status: bad.length ? `พบ ${bad.length} เดือนที่ต้องตรวจ: ${bad.map(r=>shortLabel(r.period)).join(", ")}` : "✓ ตรวจแล้ว: ยอดทุกเดือนตรงกับรายงาน",
@@ -1502,9 +1549,9 @@ function sumData(k){
     source: `ที่มา: รายงานภาษีซื้อ ${num(recs.reduce((a,r)=>a + r.buyCount, 0))} รายการ · รายงานภาษีขาย ${num(recs.reduce((a,r)=>a + r.saleCount, 0))} ใบ`};
 }
 function sumText(d){
-  return [`สรุปภาษีมูลค่าเพิ่ม · รวมหลายเดือน`, `${d.name} ${d.range}`, "",
+  return [`สรุปภาษีมูลค่าเพิ่ม · ยอดรวมทั้งหมด`, `${d.name} ${d.range}`, "",
     ...d.rows.map(r=>`${r.label}: ซื้อ ${r.buy} · ขาย ${r.sale} · จ่าย ${r.pay}${r.excess ? ` (ซื้อเกิน ${r.excess})` : ""}${r.cancel ? " ●" : ""}`), "",
-    `รวม: ภาษีซื้อ ${d.buy} · ภาษีขาย ${d.sale}`, `ภาษีที่ต้องจ่าย ภ.พ.30 รวม ${d.n} เดือน: ${d.pay} บาท`, "", d.status,
+    `รวม: ภาษีซื้อ ${d.buy} · ภาษีขาย ${d.sale}`, `ภาษีที่ต้องจ่าย ภ.พ.30 รวม: ${d.pay} บาท`, "", d.status,
     ...(d.cancelNote ? [d.cancelNote, ...d.cancelLines] : [])].join("\n");
 }
 function sumFlex(d){
@@ -1519,8 +1566,8 @@ function sumFlex(d){
   const body = [head, sep()];
   d.rows.forEach((r,i)=>{ body.push(line(r)); if (i < d.rows.length-1) body.push(sep()); });
   body.push({type:"separator", margin:"md", color:"#0F2A47"},
-    {type:"box", layout:"horizontal", margin:"md", contents:[T("รวม", {size:"xs", weight:"bold", flex:3}), cell(d.buy, {weight:"bold"}), cell(d.sale, {weight:"bold"}), cell(d.pay, {weight:"bold", color:"#0F2A47"})]},
-    T(`ภาษีที่ต้องจ่าย ภ.พ.30 รวม ${d.n} เดือน`, {size:"xs", color:"#888888", margin:"xl"}),
+    {type:"box", layout:"horizontal", margin:"md", contents:[T("รวมทั้งหมด", {size:"xxs", weight:"bold", flex:3, wrap:true}), cell(d.buy, {weight:"bold"}), cell(d.sale, {weight:"bold"}), cell(d.pay, {weight:"bold", color:"#0F2A47"})]},
+    T("ภาษีที่ต้องจ่าย ภ.พ.30 รวม", {size:"xs", color:"#888888", margin:"xl"}),
     T(d.pay + " บาท", {size:"xxl", weight:"bold", color:"#111111", margin:"xs"}),
     T("รวมยอดที่ต้องจ่ายของแต่ละเดือน (เดือนที่ภาษีซื้อเกินนับเป็น 0)", {size:"xxs", color:"#999999", wrap:true, margin:"xs"}),
     {type:"box", layout:"vertical", margin:"lg", backgroundColor: d.ok ? "#E8F7EF" : "#FFF4DB", cornerRadius:"8px", paddingAll:"10px",
@@ -1528,17 +1575,17 @@ function sumFlex(d){
     ...(d.cancelNote ? [{type:"box", layout:"vertical", margin:"md", backgroundColor:"#FDECEA", cornerRadius:"8px", paddingAll:"10px", contents:[
       T("⚠ " + d.cancelNote, {size:"xs", color:"#C62828", weight:"bold", wrap:true}), ...d.cancelLines.map(l=>T(l, {size:"xxs", color:"#C62828", wrap:true, margin:"xs"}))]}] : []),
     T(d.source, {size:"xxs", color:"#999999", wrap:true, margin:"lg"}));
-  return {type:"flex", altText:`สรุปภาษีรวม ${d.name} ${d.range}: ภาษีที่ต้องจ่ายรวม ${d.pay} บาท`,
+  return {type:"flex", altText:`ยอดรวมภาษี ${d.name} ${d.range}: ภาษีที่ต้องจ่ายรวม ${d.pay} บาท`,
     contents:{type:"bubble", size:"giga",
       header:{type:"box", layout:"vertical", backgroundColor:"#0F2A47", paddingAll:"18px", contents:[
-        T("สรุปภาษีมูลค่าเพิ่ม · รวมหลายเดือน", {size:"xs", color:"#9CCBFF"}), T(d.name, {size:"xl", weight:"bold", color:"#FFFFFF", margin:"xs"}),
+        T("สรุปภาษีมูลค่าเพิ่ม · ยอดรวมทั้งหมด", {size:"xs", color:"#9CCBFF"}), T(d.name, {size:"xl", weight:"bold", color:"#FFFFFF", margin:"xs"}),
         T(d.range, {size:"xs", color:"#C9D6E3", margin:"xs"})]},
       body:{type:"box", layout:"vertical", paddingAll:"16px", contents:body},
       footer:{type:"box", layout:"vertical", contents:[{type:"button", style:"primary", color:"#0F2A47", height:"sm", action:{type:"uri", label:"เปิดดูบนเว็บ", uri:viewLink()}}]}}};
 }
 function sumAsk(k){
   const d = sumData(k); if (!d) return;
-  document.getElementById("sconfText-"+k).textContent = `ส่งสรุปรวม ${d.name} ${d.range} · ต้องจ่ายรวม ${d.pay} บาท เข้า LINE?`;
+  document.getElementById("sconfText-"+k).textContent = `ส่งยอดรวม ${d.name} ${d.range} · ต้องจ่ายรวม ${d.pay} บาท เข้า LINE?`;
   document.getElementById("sconf-"+k).hidden = false; document.getElementById("ssend-"+k).hidden = true;
 }
 function sumCancel(k){ document.getElementById("sconf-"+k).hidden = true; document.getElementById("ssend-"+k).hidden = false; }
@@ -1546,10 +1593,10 @@ async function sumSendNow(k){
   sumCancel(k);
   const d = sumData(k), st = document.getElementById("sstat-"+k), btn = document.getElementById("ssend-"+k);
   if (!d) return;
-  btn.disabled = true; st.textContent = "กำลังส่งสรุปรวม…"; st.style.color = "var(--muted)";
+  btn.disabled = true; st.textContent = "กำลังส่งยอดรวม…"; st.style.color = "var(--muted)";
   const r = await sendLineMessage(sumText(d), sumFlex(d));
   btn.disabled = false;
-  st.textContent = (r.ok===false ? "ส่งไม่สำเร็จ: " : "สรุปรวม: ") + r.detail; st.style.color = r.ok===true ? "var(--ok)" : r.ok===false ? "var(--warn)" : "var(--muted)";
+  st.textContent = (r.ok===false ? "ส่งไม่สำเร็จ: " : "ยอดรวม: ") + r.detail; st.style.color = r.ok===true ? "var(--ok)" : r.ok===false ? "var(--warn)" : "var(--muted)";
 }
 
 /* ===== ไฟล์รวมหลายเดือน ===== */
